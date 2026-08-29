@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "buildCommand": "npm install",
+  "outputDirectory": ".",
+  "installCommand": "npm install",
+  "framework": null,
+  "functions": {
+    "src/index.ts": { "includeFiles": "demo-data/**" }
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
