@@ -86,7 +86,7 @@ export const HeroVideo: React.FC = () => {
     },
     { 
       title: '10. Smart Collections & AI', 
-      desc: 'NEXUS Copilot risk alerts, PTP WhatsApp & field dispatch route opt', 
+      desc: 'SNIPER Copilot risk alerts, PTP WhatsApp & field dispatch route opt', 
       icon: Sparkles, 
       color: 'from-blue-600 to-cyan-600',
       image: 'https://images.unsplash.com/photo-1573164713988-8665fc963095?auto=format&fit=crop&w=800&q=80'
@@ -124,7 +124,7 @@ export const HeroVideo: React.FC = () => {
               <div className="w-3 h-3 rounded-full bg-emerald-500" />
               <div className="ml-4 text-xs font-mono text-slate-400 bg-slate-900 px-3 py-1 rounded-md border border-slate-800 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                <span>app.nexuslending.in/live-lifecycle-monitor</span>
+                <span>app.sniperlending.in/live-lifecycle-monitor</span>
               </div>
             </div>
 

@@ -13,17 +13,17 @@ export const inrShort = (n: number): string => "₹" + n.toLocaleString("en-IN")
 /* Append-only loan event ledger                                       */
 /* ------------------------------------------------------------------ */
 
-export function recordLoanEvent(
+export async function recordLoanEvent(
   loanId: number,
   kind: string,
   opts: { tenantId?: number; amount?: number; reference?: string; data?: Record<string, unknown>; userId?: number } = {}
-): number {
-  const loan = q1<Record<string, any>>("SELECT * FROM loans WHERE id = ?", [loanId]);
+) {
+  const loan = await q1<Record<string, any>>("SELECT * FROM loans WHERE id = ?", [loanId]);
   const tenantId = opts.tenantId ?? loan?.tenant_id ?? 0;
-  return run(
+  return (await run(
     "INSERT INTO loan_events (tenant_id, loan_id, kind, amount, reference, data, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
     [tenantId, loanId, kind, opts.amount ?? null, opts.reference ?? null, JSON.stringify(opts.data ?? {}), opts.userId ?? null]
-  ).lastId;
+  )).lastId;
 }
 
 /* ------------------------------------------------------------------ */
@@ -39,12 +39,12 @@ export interface EligibilityCheck {
   hard: boolean;
 }
 
-export function eligibilityEngine(applicationId: number) {
-  const ctx = buildApplicationContext(applicationId);
-  const app = q1<Record<string, any>>("SELECT * FROM applications WHERE id = ?", [applicationId]);
+export async function eligibilityEngine(applicationId: number) {
+  const ctx = await buildApplicationContext(applicationId);
+  const app = await q1<Record<string, any>>("SELECT * FROM applications WHERE id = ?", [applicationId]);
   if (!app) return { verdict: "NOT_ELIGIBLE", checks: [], reasons: ["Application not found"], grade: "high" };
   const cap = capacityMetrics(ctx);
-  const product = q1<Record<string, any>>("SELECT * FROM products WHERE id = ?", [app.product_id]);
+  const product = await q1<Record<string, any>>("SELECT * FROM products WHERE id = ?", [app.product_id]);
   const amount = Number(app.requested_amount ?? 0);
   const tenure = Number(app.tenure ?? 0);
   const age = Number(ctx["customer.age"] ?? 0);
@@ -53,7 +53,7 @@ export function eligibilityEngine(applicationId: number) {
   const foir = cap.foir;
   const exposure = Number(ctx["exposure.total"] ?? 0);
   const secured = ["lap", "home", "vehicle", "gold", "commercial_vehicle"].includes(product?.category ?? "");
-  const collateral = q1<Record<string, any>>("SELECT * FROM collaterals WHERE application_id = ? ORDER BY id DESC LIMIT 1", [applicationId]);
+  const collateral = await q1<Record<string, any>>("SELECT * FROM collaterals WHERE application_id = ? ORDER BY id DESC LIMIT 1", [applicationId]);
   const category = product?.category ?? "";
 
   const checks: EligibilityCheck[] = [];
@@ -112,14 +112,14 @@ export function eligibilityEngine(applicationId: number) {
 /* Document checklist engine                                           */
 /* ------------------------------------------------------------------ */
 
-export function documentChecklist(applicationId: number) {
-  const app = q1<Record<string, any>>("SELECT * FROM applications WHERE id = ?", [applicationId]);
+export async function documentChecklist(applicationId: number) {
+  const app = await q1<Record<string, any>>("SELECT * FROM applications WHERE id = ?", [applicationId]);
   if (!app) return { rows: [] };
-  const cust = q1<Record<string, any>>("SELECT * FROM customers WHERE id = ?", [app.customer_id]);
-  const product = q1<Record<string, any>>("SELECT * FROM products WHERE id = ?", [app.product_id]);
+  const cust = await q1<Record<string, any>>("SELECT * FROM customers WHERE id = ?", [app.customer_id]);
+  const product = await q1<Record<string, any>>("SELECT * FROM products WHERE id = ?", [app.product_id]);
   const category = product?.category ?? "";
   const emp = cust?.employment_type ?? "salaried";
-  const docs = q<Record<string, any>>("SELECT * FROM documents WHERE application_id = ?", [applicationId]);
+  const docs = await q<Record<string, any>>("SELECT * FROM documents WHERE application_id = ?", [applicationId]);
 
   const rules: { category: string; name: string; required: boolean }[] = [
     { category: "pan", name: "PAN Card", required: true },
@@ -152,11 +152,11 @@ export function documentChecklist(applicationId: number) {
 /* SLA & escalation engine                                             */
 /* ------------------------------------------------------------------ */
 
-export function slaStatus(application: Record<string, any>) {
+export async function slaStatus(application: Record<string, any>) {
   const stage = application.stage;
-  const wf = q1<Record<string, any>>("SELECT * FROM workflow_stages WHERE product_id IS NULL AND code = ? AND active = 1", [stage])
-    ?? q1<Record<string, any>>("SELECT * FROM workflow_stages WHERE code = ? AND active = 1 ORDER BY id DESC LIMIT 1", [stage]);
-  const stageRow = q1<Record<string, any>>(
+  const wf = await q1<Record<string, any>>("SELECT * FROM workflow_stages WHERE product_id IS NULL AND code = ? AND active = 1", [stage])
+    ?? await q1<Record<string, any>>("SELECT * FROM workflow_stages WHERE code = ? AND active = 1 ORDER BY id DESC LIMIT 1", [stage]);
+  const stageRow = await q1<Record<string, any>>(
     "SELECT * FROM application_stages WHERE application_id = ? AND stage = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1",
     [application.id, stage]
   );
@@ -180,8 +180,8 @@ export function slaStatus(application: Record<string, any>) {
   };
 }
 
-export function slaSummary(tenantId: number) {
-  const apps = q<Record<string, any>>(
+export async function slaSummary(tenantId: number) {
+  const apps = await q<Record<string, any>>(
     `SELECT a.id, a.application_no, a.stage, a.status, c.name AS customer_name,
             (SELECT entered_at FROM application_stages s WHERE s.application_id = a.id AND s.status = 'in_progress' ORDER BY s.id DESC LIMIT 1) AS entered_at
      FROM applications a JOIN customers c ON c.id = a.customer_id
@@ -189,7 +189,7 @@ export function slaSummary(tenantId: number) {
   let atRisk = 0, breached = 0;
   const breaches: Record<string, any>[] = [];
   for (const a of apps) {
-    const s = slaStatus(a);
+    const s = await slaStatus(a);
     if (s.status === "at_risk") atRisk++;
     if (s.status === "breached") { breached++; breaches.push({ id: a.id, application_no: a.application_no, customer_name: a.customer_name, stage: a.stage, stage_name: s.stage_name, elapsed_hours: s.elapsed_hours, sla_hours: s.sla_hours }); }
   }
@@ -200,25 +200,25 @@ export function slaSummary(tenantId: number) {
 /* Duplicate detection                                                 */
 /* ------------------------------------------------------------------ */
 
-export function duplicateScan(tenantId: number, input: { pan?: string; mobile?: string; email?: string; name?: string }) {
+export async function duplicateScan(tenantId: number, input: { pan?: string; mobile?: string; email?: string; name?: string }) {
   const where: string[] = ["tenant_id = ?"];
   const params: unknown[] = [tenantId];
   if (input.pan) { where.push("pan = ?"); params.push(String(input.pan).toUpperCase().trim()); }
   if (input.mobile) { where.push("mobile = ?"); params.push(input.mobile.trim()); }
   if (input.email) { where.push("LOWER(email) = ?"); params.push(String(input.email).trim().toLowerCase()); }
   if (!input.pan && !input.mobile && !input.email) return { matches: [] };
-  const customers = q<Record<string, any>>(`SELECT * FROM customers WHERE ${where.join(" OR ")}`, params);
-  const matches = customers.map((c) => {
-    const apps = q<Record<string, any>>(
+  const customers = await q<Record<string, any>>(`SELECT * FROM customers WHERE ${where.join(" OR ")}`, params);
+  const matches = await Promise.all(customers.map(async (c) => {
+    const apps = await q<Record<string, any>>(
       `SELECT a.id, a.application_no, a.status, a.stage, p.name AS product_name FROM applications a JOIN products p ON p.id = a.product_id WHERE a.customer_id = ? ORDER BY a.id DESC LIMIT 5`,
       [c.id]);
-    const loans = q<Record<string, any>>("SELECT id, loan_no, status, outstanding FROM loans WHERE customer_id = ? AND status NOT IN ('closed','written_off') LIMIT 5", [c.id]);
+    const loans = await q<Record<string, any>>("SELECT id, loan_no, status, outstanding FROM loans WHERE customer_id = ? AND status NOT IN ('closed','written_off') LIMIT 5", [c.id]);
     const flags: string[] = [];
     if (input.pan && c.pan === input.pan.toUpperCase().trim()) flags.push("same PAN");
     if (input.mobile && c.mobile === input.mobile.trim()) flags.push("same mobile");
     if (input.email && c.email?.toLowerCase() === input.email.trim().toLowerCase()) flags.push("same email");
     return { customer: { id: c.id, customer_no: c.customer_no, name: c.name, mobile: c.mobile, city: c.city, kyc_status: c.kyc_status }, flags, applications: apps, active_loans: loans };
-  });
+  }));
   return { matches };
 }
 
@@ -226,24 +226,24 @@ export function duplicateScan(tenantId: number, input: { pan?: string; mobile?: 
 /* Credit memo / appraisal generator                                   */
 /* ------------------------------------------------------------------ */
 
-export function creditMemoContent(applicationId: number): Record<string, unknown> {
-  const app = q1<Record<string, any>>(
+export async function creditMemoContent(applicationId: number) {
+  const app = await q1<Record<string, any>>(
     `SELECT a.*, c.name AS customer_name, c.mobile, c.email, c.dob, c.employment_type, c.business_name,
             c.annual_income, c.monthly_income, c.business_turnover, c.credit_score, c.risk_class, c.city, c.state, c.kyc_status,
             p.name AS product_name, p.category, p.interest_rate, p.processing_fee_pct
      FROM applications a JOIN customers c ON c.id = a.customer_id JOIN products p ON p.id = a.product_id WHERE a.id = ?`,
     [applicationId]);
   if (!app) return {};
-  const el = eligibilityEngine(applicationId);
-  const ctx = buildApplicationContext(applicationId);
+  const el = await eligibilityEngine(applicationId);
+  const ctx = await buildApplicationContext(applicationId);
   const cap = capacityMetrics(ctx);
-  const bureau = q1<Record<string, any>>("SELECT * FROM bureau_reports WHERE customer_id = ? ORDER BY id DESC LIMIT 1", [app.customer_id]);
-  const bank = q1<Record<string, any>>("SELECT * FROM bank_analyses WHERE application_id = ? ORDER BY id DESC LIMIT 1", [applicationId]);
-  const gst = q1<Record<string, any>>("SELECT * FROM gst_profiles WHERE customer_id = ? ORDER BY id DESC LIMIT 1", [app.customer_id]);
-  const collateral = q<Record<string, any>>("SELECT * FROM collaterals WHERE application_id = ?", [applicationId]);
-  const parties = q<Record<string, any>>("SELECT * FROM parties WHERE application_id = ?", [applicationId]);
-  const exceptions = q<Record<string, any>>("SELECT * FROM policy_exceptions WHERE application_id = ? ORDER BY id DESC", [applicationId]);
-  const bre = q<Record<string, any>>(
+  const bureau = await q1<Record<string, any>>("SELECT * FROM bureau_reports WHERE customer_id = ? ORDER BY id DESC LIMIT 1", [app.customer_id]);
+  const bank = await q1<Record<string, any>>("SELECT * FROM bank_analyses WHERE application_id = ? ORDER BY id DESC LIMIT 1", [applicationId]);
+  const gst = await q1<Record<string, any>>("SELECT * FROM gst_profiles WHERE customer_id = ? ORDER BY id DESC LIMIT 1", [app.customer_id]);
+  const collateral = await q<Record<string, any>>("SELECT * FROM collaterals WHERE application_id = ?", [applicationId]);
+  const parties = await q<Record<string, any>>("SELECT * FROM parties WHERE application_id = ?", [applicationId]);
+  const exceptions = await q<Record<string, any>>("SELECT * FROM policy_exceptions WHERE application_id = ? ORDER BY id DESC", [applicationId]);
+  const bre = await q<Record<string, any>>(
     `SELECT b.code, b.name, e.passed FROM bre_evaluations e JOIN bre_rules b ON b.id = e.rule_id WHERE e.application_id = ? ORDER BY b.priority`, [applicationId]);
 
   const emi = computeEmi(app.approved_amount || app.requested_amount, app.rate || app.interest_rate, app.tenure);
@@ -279,10 +279,10 @@ export function creditMemoContent(applicationId: number): Record<string, unknown
 /* Offer comparison engine                                             */
 /* ------------------------------------------------------------------ */
 
-export function generateOffers(applicationId: number) {
-  const app = q1<Record<string, any>>("SELECT * FROM applications WHERE id = ?", [applicationId]);
+export async function generateOffers(applicationId: number) {
+  const app = await q1<Record<string, any>>("SELECT * FROM applications WHERE id = ?", [applicationId]);
   if (!app) return { offers: [] };
-  const product = q1<Record<string, any>>("SELECT * FROM products WHERE id = ?", [app.product_id]);
+  const product = await q1<Record<string, any>>("SELECT * FROM products WHERE id = ?", [app.product_id]);
   const base = Number(app.requested_amount ?? product?.min_amount ?? 100000);
   const baseTenure = Number(app.tenure ?? Math.min(product?.max_tenure ?? 36, 36));
   const rate = Number(app.rate ?? product?.interest_rate ?? 16);

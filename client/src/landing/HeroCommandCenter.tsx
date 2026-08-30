@@ -28,7 +28,7 @@ export const HeroCommandCenter: React.FC<HeroCommandCenterProps> = ({ onOpenLive
           <div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold mb-2">
               <Activity className="w-3.5 h-3.5 text-blue-600" />
-              <span>NEXUS REAL-TIME COMMAND CENTER</span>
+              <span>SNIPER REAL-TIME COMMAND CENTER</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
               Unified Lending Operations At a Glance

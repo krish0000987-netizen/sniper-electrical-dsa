@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Send, ArrowRight, Bot } from 'lucide-react';
 
-export const NexusAiSection: React.FC = () => {
+export const SniperAiSection: React.FC = () => {
   const [activePrompt, setActivePrompt] = useState<'attention' | 'unmatched' | 'risk'>('attention');
   const [customInput, setCustomInput] = useState('');
 
   return (
-    <section id="nexus-ai" className="py-24 bg-slate-900 text-white relative overflow-hidden">
+    <section id="sniper-ai" className="py-24 bg-slate-900 text-white relative overflow-hidden">
       
       {/* Background Accent Radial Overlay */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(37,99,235,0.25),rgba(255,255,255,0))]" />
@@ -24,7 +24,7 @@ export const NexusAiSection: React.FC = () => {
         >
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-400/20 text-blue-300 text-xs font-bold uppercase tracking-wider">
             <Sparkles className="w-4 h-4 text-blue-400" />
-            <span>NEXUS COGNITIVE INTELLIGENCE</span>
+            <span>SNIPER COGNITIVE INTELLIGENCE</span>
           </div>
 
           <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
@@ -56,7 +56,7 @@ export const NexusAiSection: React.FC = () => {
                 <Sparkles className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-base">NEXUS AI Copilot Engine v4.0</h3>
+                <h3 className="font-bold text-white text-base">SNIPER AI Copilot Engine v4.0</h3>
                 <p className="text-xs text-slate-400">Connected to CRM, LOS, LMS & Bank Settlement Data</p>
               </div>
             </div>
@@ -187,7 +187,7 @@ export const NexusAiSection: React.FC = () => {
           <div className="pt-2 flex items-center gap-2 border-t border-slate-800">
             <input 
               type="text" 
-              placeholder="Ask NEXUS AI Copilot about loan applications, risk alerts, or repayments..."
+              placeholder="Ask SNIPER AI Copilot about loan applications, risk alerts, or repayments..."
               value={customInput}
               onChange={(e) => setCustomInput(e.target.value)}
               className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-sans"

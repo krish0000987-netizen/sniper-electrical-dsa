@@ -1,113 +1,166 @@
-import { DatabaseSync } from "node:sqlite";
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import pg from "pg";
+import { AsyncLocalStorage } from "node:async_hooks";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-/**
- * Locate the prebuilt demo DB inside the deployment bundle. The bundler may
- * flatten the server tree, so try the source layout plus a few bundle layouts.
- */
-function findDemoDb(): string | null {
-  const candidates = [
-    path.join(__dirname, "../../demo-data/nexus.db"),
-    path.join(__dirname, "../../../demo-data/nexus.db"),
-    path.join(process.cwd(), "demo-data/nexus.db"),
-    path.join(process.cwd(), "server/demo-data/nexus.db")
-  ];
-  for (const c of candidates) {
-    if (existsSync(c)) return c;
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
   }
-  return null;
+});
+
+const transactionStorage = new AsyncLocalStorage<pg.PoolClient>();
+
+async function getClient(): Promise<pg.Pool | pg.PoolClient> {
+  return transactionStorage.getStore() || pool;
 }
 
-/**
- * Pick a writable directory for the SQLite file.
- *
- * - `NEXUS_DB` (env) always wins when set — tests point it at a temp file.
- * - On Vercel the project directory is read-only (only `/tmp` is writable), so
- *   use `/tmp` there. It is ephemeral, but the demo DB is copied in on boot.
- * - Locally, keep the SQLite file under `server/data/` as before.
- */
-function resolveDataDir(): string {
-  if (process.env.VERCEL) return "/tmp/nexus";
-  const dir = path.resolve(__dirname, "../../data");
-  try {
-    mkdirSync(dir, { recursive: true });
-    return dir;
-  } catch {
-    // Read-only filesystem (e.g. other serverless hosts): fall back to /tmp.
-    const tmp = "/tmp/nexus";
-    mkdirSync(tmp, { recursive: true });
-    return tmp;
-  }
-}
-
-const DATA_DIR = resolveDataDir();
-let dbPath = process.env.NEXUS_DB || path.join(DATA_DIR, "nexus.db");
-
-// Fast serverless cold start: copy the committed demo DB into the writable dir
-// (a ~21 MB file copy, not an ~11 s reseed). Falls back to boot-time seeding
-// (`createApp` → `createSchema`/`seedIfEmpty`) when no demo DB is bundled.
-if (!process.env.NEXUS_DB && !existsSync(dbPath)) {
-  const demo = findDemoDb();
-  if (demo) {
-    try {
-      mkdirSync(DATA_DIR, { recursive: true });
-      copyFileSync(demo, dbPath);
-    } catch {
-      // Not writable / not bundled — boot-time seeding will handle it.
+function sqliteToPgSql(sql: string): string {
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inBacktick = false;
+  let paramIndex = 1;
+  let result = "";
+  
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i];
+    if (char === "'" && sql[i - 1] !== "\\") {
+      inSingleQuote = !inSingleQuote;
+      result += char;
+    } else if (char === '"' && sql[i - 1] !== "\\") {
+      inDoubleQuote = !inDoubleQuote;
+      result += char;
+    } else if (char === "`" && sql[i - 1] !== "\\") {
+      inBacktick = !inBacktick;
+      result += char;
+    } else if (char === "?" && !inSingleQuote && !inDoubleQuote && !inBacktick) {
+      result += `$${paramIndex++}`;
+    } else {
+      result += char;
     }
   }
+  return result;
 }
 
-export const DB_PATH = dbPath;
+export function translateSql(sql: string): string {
+  let s = sql.trim();
+  
+  // Translate SQLite datetime('now') and modifiers
+  s = s.replace(/datetime\('now'\)/gi, "CURRENT_TIMESTAMP");
+  s = s.replace(/datetime\('now',\s*'([^']+)'\)/gi, (match, interval) => {
+    return `CURRENT_TIMESTAMP + INTERVAL '${interval}'`;
+  });
+  s = s.replace(/datetime\('now',\s*([^)]+)\)/gi, (match, val) => {
+    if (val.trim() === "?") {
+      return `CURRENT_TIMESTAMP + CAST(? AS INTERVAL)`;
+    }
+    return match;
+  });
 
-const _db = new DatabaseSync(DB_PATH);
-try {
-  _db.exec("PRAGMA journal_mode = WAL;");
-} catch {
-  // WAL is an optimization; some ephemeral filesystems reject it.
+  // Translate INSERT OR IGNORE and INSERT OR REPLACE
+  if (/INSERT OR IGNORE INTO gn_attendance/i.test(s)) {
+    s = s.replace(/INSERT OR IGNORE INTO gn_attendance/i, "INSERT INTO gn_attendance");
+    s += " ON CONFLICT DO NOTHING";
+  } else if (/INSERT OR IGNORE INTO gn_payroll/i.test(s)) {
+    s = s.replace(/INSERT OR IGNORE INTO gn_payroll/i, "INSERT INTO gn_payroll");
+    s += " ON CONFLICT (user_id, month) DO NOTHING";
+  } else if (/INSERT OR IGNORE INTO/i.test(s)) {
+    s = s.replace(/INSERT OR IGNORE INTO/i, "INSERT INTO");
+    s += " ON CONFLICT DO NOTHING";
+  }
+
+  if (/INSERT OR REPLACE INTO system_config/i.test(s)) {
+    s = s.replace(/INSERT OR REPLACE INTO system_config/i, "INSERT INTO system_config");
+    s += " ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at";
+  } else if (/INSERT OR REPLACE INTO gn_payroll/i.test(s)) {
+    s = s.replace(/INSERT OR REPLACE INTO gn_payroll/i, "INSERT INTO gn_payroll");
+    s += " ON CONFLICT (user_id, month) DO UPDATE SET basic = EXCLUDED.basic, hra = EXCLUDED.hra, allowance = EXCLUDED.allowance, gross = EXCLUDED.gross, tds = EXCLUDED.tds, net = EXCLUDED.net, status = EXCLUDED.status";
+  } else if (/INSERT OR REPLACE INTO gn_roles/i.test(s)) {
+    s = s.replace(/INSERT OR REPLACE INTO gn_roles/i, "INSERT INTO gn_roles");
+    s += " ON CONFLICT (tenant_id, code) DO UPDATE SET name = EXCLUDED.name, kind = EXCLUDED.kind, designation = EXCLUDED.designation, partner_type = EXCLUDED.partner_type, is_system = EXCLUDED.is_system";
+  } else if (/INSERT OR REPLACE INTO gn_role_permissions/i.test(s)) {
+    s = s.replace(/INSERT OR REPLACE INTO gn_role_permissions/i, "INSERT INTO gn_role_permissions");
+    s += " ON CONFLICT (tenant_id, role_id, module, action) DO UPDATE SET scope = EXCLUDED.scope, allowed = EXCLUDED.allowed";
+  }
+
+  // Replace sqlite_master with pg_tables
+  s = s.replace(/sqlite_master/gi, "pg_tables");
+
+  // Convert parameters ? to $1, $2, ...
+  s = sqliteToPgSql(s);
+
+  // Append RETURNING id to INSERT statements to fetch lastId
+  if (s.trim().toUpperCase().startsWith("INSERT ") && !s.toUpperCase().includes("RETURNING ")) {
+    s += " RETURNING id";
+  }
+
+  return s;
 }
-_db.exec("PRAGMA foreign_keys = ON;");
 
-export function db(): DatabaseSync {
+function translateDdl(sql: string): string {
+  let s = sql;
+  s = s.replace(/INTEGER PRIMARY KEY AUTOINCREMENT/gi, "SERIAL PRIMARY KEY");
+  s = s.replace(/\(datetime\('now'\)\)/gi, "CURRENT_TIMESTAMP");
+  s = s.replace(/datetime\('now'\)/gi, "CURRENT_TIMESTAMP");
+  s = s.replace(/PRAGMA journal_mode\s*=\s*WAL;/gi, "");
+  s = s.replace(/PRAGMA foreign_keys\s*=\s*\w+;/gi, "");
+  return s;
+}
+
+class PostgresDbWrapper {
+  async exec(sql: string): Promise<void> {
+    const translated = translateDdl(sql);
+    const client = await getClient();
+    await client.query(translated);
+  }
+}
+
+const _db = new PostgresDbWrapper();
+
+export function db(): PostgresDbWrapper {
   return _db;
 }
 
 export type Row = Record<string, any>;
 
-type SQLValue = string | number | bigint | null | Uint8Array;
+export const DB_PATH = process.env.DATABASE_URL || "";
 
-export function q<T = Row>(sql: string, params: unknown[] = []): T[] {
-  const stmt = _db.prepare(sql);
-  return stmt.all(...(params as SQLValue[])) as T[];
+export async function q<T = any>(sql: string, params: unknown[] = []){
+  const translated = translateSql(sql);
+  const client = await getClient();
+  const res = await client.query(translated, params);
+  return res.rows;
 }
 
-export function q1<T = Row>(sql: string, params: unknown[] = []): T | undefined {
-  const stmt = _db.prepare(sql);
-  return stmt.get(...(params as SQLValue[])) as T | undefined;
+export async function q1<T = any>(sql: string, params: unknown[] = []){
+  const translated = translateSql(sql);
+  const client = await getClient();
+  const res = await client.query(translated, params);
+  return res.rows[0];
 }
 
-export function run(sql: string, params: unknown[] = []): { lastId: number; changes: number } {
-  const stmt = _db.prepare(sql);
-  const res = stmt.run(...(params as SQLValue[]));
-  return { lastId: Number(res.lastInsertRowid), changes: Number(res.changes) };
+export async function run(sql: string, params: unknown[] = []){
+  const translated = translateSql(sql);
+  const client = await getClient();
+  const res = await client.query(translated, params);
+  const lastId = res.rows[0]?.id ? Number(res.rows[0].id) : 0;
+  return { lastId, changes: res.rowCount ?? 0 };
 }
 
-export function tx<T>(fn: () => T): T {
-  _db.exec("BEGIN");
+export async function tx<T>(fn: () => Promise<T>){
+  const client = await pool.connect();
   try {
-    const out = fn();
-    _db.exec("COMMIT");
-    return out;
+    await client.query("BEGIN");
+    const result = await transactionStorage.run(client, fn);
+    await client.query("COMMIT");
+    return result;
   } catch (e) {
-    _db.exec("ROLLBACK");
+    await client.query("ROLLBACK");
     throw e;
+  } finally {
+    client.release();
   }
 }
 
-export function now(): string {
+export async function now(): Promise<string> {
   return new Date().toISOString();
 }

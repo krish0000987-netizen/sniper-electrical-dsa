@@ -1,12 +1,12 @@
 import { db } from "./connection.js";
 
 /**
- * NEXUS schema — the platform's own domain model.
+ * SNIPER schema — the platform's own domain model.
  * Tenancy-isolated: every business table carries tenant_id and is queried
  * through tenant-scoped helpers. No cross-tenant leakage by construction.
  */
-export function createSchema() {
-  db().exec(`
+export async function createSchema() {
+  await db().exec(`
   CREATE TABLE IF NOT EXISTS tenants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT UNIQUE NOT NULL,
@@ -36,6 +36,7 @@ export function createSchema() {
     phone TEXT,
     active INTEGER NOT NULL DEFAULT 1,
     last_login_at TEXT,
+    customer_id INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -163,7 +164,9 @@ export function createSchema() {
     decision_at TEXT,
     decision_note TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT
+    updated_at TEXT,
+    rate REAL,
+    offer_id INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS workflow_stages (
@@ -405,7 +408,8 @@ export function createSchema() {
     restructured INTEGER NOT NULL DEFAULT 0,
     written_off INTEGER NOT NULL DEFAULT 0,
     closed_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT
   );
 
   CREATE TABLE IF NOT EXISTS installments (
@@ -421,7 +425,8 @@ export function createSchema() {
     paid_amount INTEGER NOT NULL DEFAULT 0,
     paid_at TEXT,
     days_late INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'pending'
+    status TEXT NOT NULL DEFAULT 'pending',
+    superseded INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS payments (
@@ -941,7 +946,8 @@ export function createSchema() {
     is_direct_booking INTEGER NOT NULL DEFAULT 0,
     is_cross_sell INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT
+    updated_at TEXT,
+    applicant_id INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS gn_application_timeline (
@@ -1555,38 +1561,9 @@ export function createSchema() {
   CREATE INDEX IF NOT EXISTS idx_gn_commissions_tenant ON gn_commissions(tenant_id);
   CREATE INDEX IF NOT EXISTS idx_gn_partners_tenant ON gn_partners(tenant_id);
   `);
-
-  migrate();
 }
 
-/** In-place migrations for schemas that evolved after first creation. */
-function migrate() {
-  const loansCols = db().prepare("PRAGMA table_info(loans)").all() as { name: string }[];
-  if (!loansCols.some((c) => c.name === "updated_at")) {
-    db().exec("ALTER TABLE loans ADD COLUMN updated_at TEXT");
-  }
-  const usersCols = db().prepare("PRAGMA table_info(users)").all() as { name: string }[];
-  if (!usersCols.some((c) => c.name === "customer_id")) {
-    db().exec("ALTER TABLE users ADD COLUMN customer_id INTEGER");
-  }
-  const appsCols = db().prepare("PRAGMA table_info(applications)").all() as { name: string }[];
-  if (!appsCols.some((c) => c.name === "rate")) {
-    db().exec("ALTER TABLE applications ADD COLUMN rate REAL");
-  }
-  if (!appsCols.some((c) => c.name === "offer_id")) {
-    db().exec("ALTER TABLE applications ADD COLUMN offer_id INTEGER");
-  }
-  const instCols = db().prepare("PRAGMA table_info(installments)").all() as { name: string }[];
-  if (!instCols.some((c) => c.name === "superseded")) {
-    db().exec("ALTER TABLE installments ADD COLUMN superseded INTEGER NOT NULL DEFAULT 0");
-  }
-  const gnAppsCols = db().prepare("PRAGMA table_info(gn_applications)").all() as { name: string }[];
-  if (!gnAppsCols.some((c) => c.name === "applicant_id")) {
-    db().exec("ALTER TABLE gn_applications ADD COLUMN applicant_id INTEGER");
-  }
-}
-
-export function resetSchema() {
+export async function resetSchema() {
   const tables = [
     "gn_webhook_events", "gn_api_logs", "gn_api_providers", "gn_bulk_errors", "gn_bulk_jobs", "gn_bulk_rows", "gn_bulk_batches",
     "gn_payouts", "gn_disbursements", "gn_agreements", "gn_sanctions", "gn_lender_matches", "gn_credit_profiles", "gn_kyc", "gn_consents",
@@ -1604,10 +1581,10 @@ export function resetSchema() {
     "documents", "application_stages", "workflow_stages", "applications", "products",
     "customers", "lead_activities", "leads", "sessions", "users", "branches", "tenants"
   ];
-  db().exec("PRAGMA foreign_keys = OFF;");
+  await db().exec("PRAGMA foreign_keys = OFF;");
   for (const t of tables) {
-    db().exec(`DROP TABLE IF EXISTS ${t};`);
+    await db().exec(`DROP TABLE IF EXISTS ${t};`);
   }
-  createSchema();
-  db().exec("PRAGMA foreign_keys = ON;");
+  await createSchema();
+  await db().exec("PRAGMA foreign_keys = ON;");
 }

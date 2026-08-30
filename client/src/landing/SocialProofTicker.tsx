@@ -22,7 +22,7 @@ export const SocialProofTicker: React.FC = () => {
     { name: 'PAYMENTS & AUTO-RECON', icon: CreditCard, desc: '98%+ Direct Match' },
     { name: 'SMART COLLECTIONS', icon: Receipt, desc: 'PTP & Field Dispatch' },
     { name: 'COMPLIANCE & KFS', icon: ShieldCheck, desc: 'RBI Regulatory Vault' },
-    { name: 'NEXUS AI COPILOT', icon: Sparkles, desc: 'Operational Intelligence' }
+    { name: 'SNIPER AI COPILOT', icon: Sparkles, desc: 'Operational Intelligence' }
   ];
 
   return (

@@ -21,7 +21,7 @@ import { FieldSalesSection } from "../landing/FieldSalesSection";
 import { ComplianceSection } from "../landing/ComplianceSection";
 import { RiskSection } from "../landing/RiskSection";
 import { EcosystemSection } from "../landing/EcosystemSection";
-import { NexusAiSection } from "../landing/NexusAiSection";
+import { SniperAiSection } from "../landing/SniperAiSection";
 import { Footer } from "../landing/Footer";
 import { FloatingAiAssistant } from "../landing/FloatingAiAssistant";
 import { DemoModal } from "../landing/DemoModal";
@@ -64,7 +64,7 @@ export default function Landing() {
         <RiskSection />
         <EcosystemSection />
 
-        <NexusAiSection />
+        <SniperAiSection />
       </main>
       <Footer />
       <FloatingAiAssistant onSelectAction={(actionType) => { if (actionType === "applications") nav("/app"); else if (actionType === "reconciliation") nav("/payments"); else nav("/risk"); }} />

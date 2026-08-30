@@ -68,7 +68,7 @@ export default function Customers() {
           searchPlaceholder="Search by name, mobile, PAN, customer ID…"
           onSearch={(v) => { setQ(v); setPage(1); }}
           onRowClick={(r) => nav(`/customers/${r.id}`)}
-          exportName="nexus-customers"
+          exportName="sniper-customers"
         />
       </Card>
 

@@ -87,7 +87,7 @@ export default function CreditRisk() {
           </div>
 
           <Card className="mb-4">
-            <CardTitle title="Fraud surveillance" sub="Applications flagged by the NEXUS fraud engine" />
+            <CardTitle title="Fraud surveillance" sub="Applications flagged by the SNIPER fraud engine" />
             {risk.fraud?.length ? (
               <div className="divide-y divide-zinc-50">
                 {risk.fraud.map((f: any) => (

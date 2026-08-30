@@ -6,10 +6,10 @@ export interface AuthedRequest extends Request {
   user?: SessionUser;
 }
 
-export function authRequired(req: AuthedRequest, res: Response, next: NextFunction) {
+export async function authRequired(req: AuthedRequest, res: Response, next: NextFunction) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : undefined;
-  const user = getUserFromToken(token);
+  const user = await getUserFromToken(token);
   if (!user) {
     res.status(401).json({ error: "Authentication required" });
     return;
@@ -19,12 +19,12 @@ export function authRequired(req: AuthedRequest, res: Response, next: NextFuncti
 }
 
 export function requirePerm(perm: string) {
-  return (req: AuthedRequest, res: Response, next: NextFunction) => {
+  return async (req: AuthedRequest, res: Response, next: NextFunction) => {
     // GN permissions resolve through the admin-toggable role-permission grid;
     // everything else keeps the built-in role map untouched.
     const allowed = req.user
       ? perm.startsWith("gn.")
-        ? hasGnPerm(req.user.tenant_id, req.user.role, perm)
+        ? await hasGnPerm(req.user.tenant_id, req.user.role, perm)
         : hasPermission(req.user, perm)
       : false;
     if (!allowed) {

@@ -1,4 +1,4 @@
-const TOKEN_KEY = "nexus_token";
+const TOKEN_KEY = "sniper_token";
 
 // Base URL for the API. Defaults to the same origin (relative /api, proxied by
 // the Vite dev server). Set VITE_API_BASE to point the built app at a

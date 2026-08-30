@@ -29,7 +29,7 @@ export const EcosystemSection: React.FC = () => {
     { id: 'payments', title: 'Payments & Auto-Recon', icon: CreditCard, tagline: 'Disbursements, eNACH & 98%+ Auto Match', desc: 'Direct bank payout APIs and automated UTR bank statement matching.' },
     { id: 'collections', title: 'Smart Collections', icon: Receipt, tagline: 'DPD Queue, PTP Tracking & Field Dispatch', desc: 'AI-driven collection queue, automated WhatsApp payment links, and field agent routes.' },
     { id: 'compliance', title: 'Compliance & KFS Vault', icon: ShieldCheck, tagline: 'RBI Regulatory Key Fact Statement Engine', desc: 'Calculates exact APR, generates KFS, records digital consents, and manages audit trails.' },
-    { id: 'ai', title: 'NEXUS AI Copilot', icon: Sparkles, tagline: 'Operational Intelligence & Risk Assistant', desc: 'Conversational assistant for underwriter queues, SLA alerts, and reconciliation exceptions.' },
+    { id: 'ai', title: 'SNIPER AI Copilot', icon: Sparkles, tagline: 'Operational Intelligence & Risk Assistant', desc: 'Conversational assistant for underwriter queues, SLA alerts, and reconciliation exceptions.' },
     { id: 'customer', title: 'Borrower Portal', icon: Smartphone, tagline: 'Self-Serve Loan App & EMI Payments', desc: 'Mobile-first borrower portal for tracking loan status, downloading KFS, and paying EMIs.' },
     { id: 'dsa', title: 'DSA Partner Portal', icon: Building2, tagline: 'Referral Pipeline & Commission Tracking', desc: 'Empowers channel partners with referral links, approval status, and payout tracking.' }
   ];
@@ -42,7 +42,7 @@ export const EcosystemSection: React.FC = () => {
         <div className="text-center max-w-3xl mx-auto space-y-4 mb-16">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-bold uppercase tracking-wider">
             <Zap className="w-3.5 h-3.5 text-blue-600" />
-            <span>NEXUS ECOSYSTEM MATRIX</span>
+            <span>SNIPER ECOSYSTEM MATRIX</span>
           </div>
 
           <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-950 tracking-tight">
@@ -50,7 +50,7 @@ export const EcosystemSection: React.FC = () => {
           </h2>
 
           <p className="text-base sm:text-lg text-slate-600">
-            Hover or tap any module in the NEXUS ecosystem to inspect live capabilities and seamless data flow.
+            Hover or tap any module in the SNIPER ecosystem to inspect live capabilities and seamless data flow.
           </p>
         </div>
 
@@ -99,7 +99,7 @@ export const EcosystemSection: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-[10px] font-mono uppercase bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded">
-                      NEXUS MODULE #{activeNode + 1}
+                      SNIPER MODULE #{activeNode + 1}
                     </span>
                     <h3 className="text-xl font-bold text-slate-900 mt-0.5">{nodes[activeNode].title}</h3>
                   </div>
@@ -122,7 +122,7 @@ export const EcosystemSection: React.FC = () => {
                   <span className="text-emerald-400 font-semibold">ONLINE & SYNCED</span>
                 </div>
                 <div className="text-slate-300">
-                  <span className="text-blue-400 font-bold">API Endpoint:</span> /api/v4/nexus/{nodes[activeNode].id}/execute
+                  <span className="text-blue-400 font-bold">API Endpoint:</span> /api/v4/sniper/{nodes[activeNode].id}/execute
                 </div>
                 <div className="text-slate-400 flex items-center justify-between pt-1">
                   <span>Data Integration: Fully Bilateral</span>

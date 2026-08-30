@@ -101,7 +101,7 @@ export default function Admin() {
           <CardTitle title="Platform users" sub="Granular RBAC across 17 roles — permissions enforced server-side" right={
             <button className="btn btn-primary btn-sm" onClick={() => setUserOpen(true)}>Add user</button>
           } />
-          <DataTable columns={userCols} rows={users.rows || []} total={users.rows?.length} searchable searchPlaceholder="Search users…" exportName="nexus-users" />
+          <DataTable columns={userCols} rows={users.rows || []} total={users.rows?.length} searchable searchPlaceholder="Search users…" exportName="sniper-users" />
         </Card>
       )}
 
@@ -110,7 +110,7 @@ export default function Admin() {
           <CardTitle title="Product engine" sub="Every product fully configurable — rates, fees, tenure, allocation policy" right={
             <button className="btn btn-primary btn-sm" onClick={() => setProductOpen(true)}>New product</button>
           } />
-          <DataTable columns={productCols} rows={products} total={products.length} searchable searchPlaceholder="Search products…" exportName="nexus-products" />
+          <DataTable columns={productCols} rows={products} total={products.length} searchable searchPlaceholder="Search products…" exportName="sniper-products" />
         </Card>
       )}
 

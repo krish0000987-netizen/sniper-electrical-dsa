@@ -1,4 +1,4 @@
-# NEXUS — India's Intelligent Lending Operating System
+# SNIPER — India's Intelligent Lending Operating System
 
 **World-class LOS + LMS + CRM + Credit + Collections platform** — an original, independently designed lending operating system built for multi-tenant, white-label, enterprise deployment.
 
@@ -19,11 +19,11 @@ Open **http://localhost:5173** and sign in with any demo account (password `demo
 
 | Account | Role |
 |---|---|
-| `admin@nexus.demo` | Super Admin — full platform |
-| `credit@nexus.demo` | Credit Manager — underwriting & approvals |
-| `collections@nexus.demo` | Collection Manager — recovery & PTPs |
-| `dsa@nexus.demo` | DSA Partner — lead & application intake |
-| `sales@nexus.demo` | Sales Manager — CRM & pipeline |
+| `admin@sniper.demo` | Super Admin — full platform |
+| `credit@sniper.demo` | Credit Manager — underwriting & approvals |
+| `collections@sniper.demo` | Collection Manager — recovery & PTPs |
+| `dsa@sniper.demo` | DSA Partner — lead & application intake |
+| `sales@sniper.demo` | Sales Manager — CRM & pipeline |
 
 ## Demo journey (fully connected)
 
@@ -31,7 +31,7 @@ Open **http://localhost:5173** and sign in with any demo account (password `demo
 Lead → Customer → Application → KYC → Documents → Credit (mock bureau) → Bank & GST
 → BRE (rules engine) → Underwriting → Approval (matrix) → Sanction → KFS (APR + schedule)
 → Agreement (sandbox e-sign) → Disbursement → Loan account → EMI schedule → Payment
-(allocated by policy) → Collections (DPD / PTP / tasks) → Reports → NEXUS AI
+(allocated by policy) → Collections (DPD / PTP / tasks) → Reports → SNIPER AI
 ```
 
 ## Architecture
@@ -50,7 +50,7 @@ server/   Express + node:sqlite (zero native deps, deterministic lending math)
 - **Financial immutability** — no historical edits; reversals/adjustments with full audit.
 - **Audit everything** — who/what/when/before/after on every sensitive action (append-only).
 - **Integration hub** — adapter abstraction for CIBIL/Experian/Equifax/CRIF, KYC, GST, AA, eSign, payments; every adapter in `SANDBOX` mode in the demo (no live provider queried, no external secrets).
-- **NEXUS AI** — advisory analytics over live data (attention items, top overdue, lead/DSA performance, PTP watch). AI never approves or modifies records.
+- **SNIPER AI** — advisory analytics over live data (attention items, top overdue, lead/DSA performance, PTP watch). AI never approves or modifies records.
 
 ## Engines
 
@@ -61,7 +61,7 @@ server/   Express + node:sqlite (zero native deps, deterministic lending math)
 | LMS | Loan accounts, amortization schedules, DPD/NPA, payment allocation engine, charges, PTP, foreclosure quotes, restructuring, write-offs, settlements |
 | Collections | Prioritized recovery queue, DPD book, agent performance, PTP kept/broken |
 | Compliance | KYC ledger, consent ledger, grievance center, versioned compliance rules, KFS validation |
-| Intelligence | Executive dashboard (India map), enterprise reports, risk/concentration analytics, early warning, NEXUS AI |
+| Intelligence | Executive dashboard (India map), enterprise reports, risk/concentration analytics, early warning, SNIPER AI |
 | Platform | RBAC (17 roles), admin (users/products/workflow/integrations), audit trail, global search (⌘K) |
 
 ## Scripts
@@ -83,7 +83,7 @@ Postgres instead.
 
 - **API** — Vercel project rooted at `server/` (Express preset, entry `src/index.ts`).
   - Requires Node ≥ 22.13 for `node:sqlite`; pinned via `"engines": { "node": "22.x" }` in `server/package.json`.
-  - `server/src/db/connection.ts` copies the committed demo DB (`server/demo-data/nexus.db`, ~11 MB) into `/tmp/nexus` on cold start — milliseconds, not the ~11 s reseed — and falls back to on-boot seeding if the file isn't bundled. `NEXUS_DB` always overrides.
+  - `server/src/db/connection.ts` copies the committed demo DB (`server/demo-data/sniper.db`, ~11 MB) into `/tmp/sniper` on cold start — milliseconds, not the ~11 s reseed — and falls back to on-boot seeding if the file isn't bundled. `SNIPER_DB` always overrides.
   - Health check: `GET /api/health`.
 - **Web app** — Vercel project rooted at `client/` (Vite preset, `npm run build`).
   Set `VITE_API_BASE` to the API origin (e.g. `https://loanserver.vercel.app`) so the
@@ -91,6 +91,6 @@ Postgres instead.
 
 ## Notes
 
-- SQLite database lives at `server/data/nexus.db` (WAL mode). Reset anytime with `npm run seed -- reset`.
-- The ambient `PORT` env var is ignored; the API uses `NEXUS_PORT` (default 8787).
-- **Not built on** Fineract, Mifos, FinStack or any other open-source LOS/LMS — the domain model, workflows, engines, UI and APIs are independently designed for NEXUS.
+- SQLite database lives at `server/data/sniper.db` (WAL mode). Reset anytime with `npm run seed -- reset`.
+- The ambient `PORT` env var is ignored; the API uses `SNIPER_PORT` (default 8787).
+- **Not built on** Fineract, Mifos, FinStack or any other open-source LOS/LMS — the domain model, workflows, engines, UI and APIs are independently designed for SNIPER.

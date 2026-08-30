@@ -38,7 +38,7 @@ async function login(email: string) {
 
 before(async () => {
   const { createApp } = await import("../app.js");
-  const app = createApp();
+  const app = await createApp();
   server = app.listen(0);
   await new Promise<void>((resolve) => server.once("listening", () => resolve()));
   const addr = server.address();

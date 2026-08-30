@@ -56,7 +56,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenBookDemo, onOpenTour, onOp
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-xl font-extrabold tracking-tight text-slate-900">NEXUS</span>
+                <span className="text-xl font-extrabold tracking-tight text-slate-900">SNIPER</span>
                 <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">OS</span>
               </div>
               <p className="text-[10px] text-slate-500 font-medium tracking-tight hidden sm:block">
@@ -83,7 +83,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenBookDemo, onOpenTour, onOp
                 <div className="absolute top-full left-0 w-[640px] mt-1 bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
                   <div className="col-span-2 pb-3 mb-2 border-b border-slate-100 flex items-center justify-between">
                     <div>
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">NEXUS Core Modules</h4>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">SNIPER Core Modules</h4>
                       <p className="text-xs text-slate-500">Connected lifecycle from Lead to Recovery</p>
                     </div>
                     <span className="text-xs text-blue-600 font-semibold bg-blue-50 px-2 py-1 rounded-md">18+ Modules</span>
@@ -129,13 +129,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenBookDemo, onOpenTour, onOp
                     </div>
                   </a>
 
-                  <a href="#nexus-ai" className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition-colors group col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border border-blue-100">
+                  <a href="#sniper-ai" className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition-colors group col-span-2 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border border-blue-100">
                     <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center">
                       <Sparkles className="w-5 h-5" />
                     </div>
                     <div>
                       <div className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                        NEXUS AI Copilot
+                        SNIPER AI Copilot
                         <span className="text-[10px] font-bold uppercase bg-blue-600 text-white px-1.5 py-0.5 rounded">NEW</span>
                       </div>
                       <div className="text-xs text-slate-600">Operational AI for applications risk, reconciliation & SLA breach alerts</div>
@@ -271,7 +271,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenBookDemo, onOpenTour, onOp
             <a href="#bre" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-slate-50">Credit BRE Engine</a>
             <a href="#payments" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-slate-50">Payments & Auto-Recon</a>
             <a href="#collections" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-slate-50">Smart Collections</a>
-            <a href="#nexus-ai" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-slate-50 text-blue-600 font-semibold">NEXUS AI Copilot</a>
+            <a href="#sniper-ai" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-slate-50 text-blue-600 font-semibold">SNIPER AI Copilot</a>
             <a href="#compliance" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-slate-50">Compliance & KFS</a>
             <a href="#integrations" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-slate-50">Integrations (CIBIL, Setu, AA)</a>
             <a href="#industries" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-slate-50">Industries & Models</a>

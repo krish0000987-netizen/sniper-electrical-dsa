@@ -45,8 +45,8 @@ crmRouter.get("/leads", requirePerm("leads.view"), asyncH(async (req: AuthedRequ
   const allowSort = ["created_at", "score", "requested_amount", "followup_at"];
   const order = allowSort.includes(sort) ? sort : "created_at";
   const off = (Math.max(1, Number(page)) - 1) * Number(limit);
-  const total = q1<{ n: number }>(`SELECT COUNT(*) AS n FROM leads l WHERE ${where.join(" AND ")}`, params)!.n;
-  const rows = q<Record<string, any>>(
+  const total = (await q1<{ n: number }>(`SELECT COUNT(*) AS n FROM leads l WHERE ${where.join(" AND ")}`, params))!.n;
+  const rows = await q<Record<string, any>>(
     `SELECT l.*, u.name AS owner_name, c.name AS customer_name
      FROM leads l LEFT JOIN users u ON u.id = l.owner_id LEFT JOIN customers c ON c.id = l.customer_id
      WHERE ${where.join(" AND ")} ORDER BY l.${order} ${dir === "asc" ? "ASC" : "DESC"} LIMIT ? OFFSET ?`,
@@ -56,7 +56,7 @@ crmRouter.get("/leads", requirePerm("leads.view"), asyncH(async (req: AuthedRequ
 }));
 
 crmRouter.get("/leads/stats", requirePerm("leads.view"), asyncH(async (req: AuthedRequest, res) => {
-  const rows = q<Record<string, any>>("SELECT status, COUNT(*) AS n FROM leads WHERE tenant_id = ? GROUP BY status", [req.user!.tenant_id]);
+  const rows = await q<Record<string, any>>("SELECT status, COUNT(*) AS n FROM leads WHERE tenant_id = ? GROUP BY status", [req.user!.tenant_id]);
   res.json(rows);
 }));
 
@@ -88,7 +88,7 @@ function leadNo(): string {
 crmRouter.post("/leads", requirePerm("leads.create"), asyncH(async (req: AuthedRequest, res) => {
   const body = leadSchema.parse(req.body);
   const tenantId = req.user!.tenant_id;
-  const id = run(
+  const id = (await run(
     `INSERT INTO leads (tenant_id, branch_id, lead_no, name, mobile, email, city, state, loan_type, requested_amount,
        monthly_income, business_turnover, source, campaign, dsa_id, owner_id, status, next_action, followup_at, notes, score, probability)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
@@ -96,26 +96,26 @@ crmRouter.post("/leads", requirePerm("leads.create"), asyncH(async (req: AuthedR
      body.city ?? null, body.state ?? null, body.loan_type ?? "personal", body.requested_amount ?? null,
      body.monthly_income ?? null, body.business_turnover ?? null, body.source ?? "walkin", body.campaign ?? null,
      body.dsa_id ?? null, body.owner_id ?? null, body.status ?? "new", body.next_action ?? null, body.followup_at ?? null, body.notes ?? null]
-  ).lastId;
-  const row = q1("SELECT * FROM leads WHERE id = ?", [id])!;
-  run("UPDATE leads SET score = ?, probability = ? WHERE id = ?", [leadScore(row), leadProbability(row.status), id]);
-  audit({ tenantId, userId: req.user!.id, action: "lead.create", entityType: "lead", entityId: id, after: row, ip: clientIp(req) });
-  res.json(q1("SELECT * FROM leads WHERE id = ?", [id]));
+  )).lastId;
+  const row = await q1("SELECT * FROM leads WHERE id = ?", [id])!;
+  await run("UPDATE leads SET score = ?, probability = ? WHERE id = ?", [leadScore(row), leadProbability(row.status), id]);
+  await audit({ tenantId, userId: req.user!.id, action: "lead.create", entityType: "lead", entityId: id, after: row, ip: clientIp(req) });
+  res.json(await q1("SELECT * FROM leads WHERE id = ?", [id]));
 }));
 
 crmRouter.get("/leads/:id", requirePerm("leads.view"), asyncH(async (req: AuthedRequest, res) => {
-  const lead = q1<Record<string, any>>(
+  const lead = await q1<Record<string, any>>(
     `SELECT l.*, u.name AS owner_name FROM leads l LEFT JOIN users u ON u.id = l.owner_id WHERE l.id = ? AND l.tenant_id = ?`,
     [req.params.id, req.user!.tenant_id]
   );
   if (!lead) { res.status(404).json({ error: "Lead not found" }); return; }
-  const activities = q("SELECT * FROM lead_activities WHERE lead_id = ? ORDER BY id DESC LIMIT 30", [lead.id]);
+  const activities = await q("SELECT * FROM lead_activities WHERE lead_id = ? ORDER BY id DESC LIMIT 30", [lead.id]);
   res.json({ lead, activities });
 }));
 
 crmRouter.patch("/leads/:id", requirePerm("leads.edit"), asyncH(async (req: AuthedRequest, res) => {
   const body = leadSchema.partial().parse(req.body);
-  const before = q1("SELECT * FROM leads WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
+  const before = await q1("SELECT * FROM leads WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
   if (!before) { res.status(404).json({ error: "Lead not found" }); return; }
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -124,60 +124,60 @@ crmRouter.patch("/leads/:id", requirePerm("leads.edit"), asyncH(async (req: Auth
     params.push(v === undefined ? null : v);
   }
   if (body.status) {
-    run("INSERT INTO lead_activities (lead_id, user_id, kind, outcome, note) VALUES (?, ?, 'status_change', ?, ?)",
+    await run("INSERT INTO lead_activities (lead_id, user_id, kind, outcome, note) VALUES (?, ?, 'status_change', ?, ?)",
       [before.id, req.user!.id, body.status, `Status → ${body.status}`]);
   }
   params.push(req.params.id, req.user!.tenant_id);
-  run(`UPDATE leads SET ${sets.join(", ")}, updated_at = datetime('now') WHERE id = ? AND tenant_id = ?`, params);
-  const row = q1("SELECT * FROM leads WHERE id = ?", [before.id])!;
-  run("UPDATE leads SET score = ?, probability = ? WHERE id = ?", [leadScore(row), leadProbability(row.status), row.id]);
-  audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "lead.update", entityType: "lead", entityId: before.id, before, after: row, ip: clientIp(req) });
-  res.json(q1("SELECT * FROM leads WHERE id = ?", [before.id]));
+  await run(`UPDATE leads SET ${sets.join(", ")}, updated_at = datetime('now') WHERE id = ? AND tenant_id = ?`, params);
+  const row = await q1("SELECT * FROM leads WHERE id = ?", [before.id])!;
+  await run("UPDATE leads SET score = ?, probability = ? WHERE id = ?", [leadScore(row), leadProbability(row.status), row.id]);
+  await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "lead.update", entityType: "lead", entityId: before.id, before, after: row, ip: clientIp(req) });
+  res.json(await q1("SELECT * FROM leads WHERE id = ?", [before.id]));
 }));
 
 crmRouter.post("/leads/:id/activity", requirePerm("leads.edit"), asyncH(async (req: AuthedRequest, res) => {
   const body = z.object({ kind: z.string(), outcome: z.string().optional(), note: z.string().optional(), duration_sec: z.number().optional() }).parse(req.body);
-  const lead = q1("SELECT * FROM leads WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
+  const lead = await q1("SELECT * FROM leads WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
   if (!lead) { res.status(404).json({ error: "Lead not found" }); return; }
-  const id = run(
+  const id = (await run(
     "INSERT INTO lead_activities (lead_id, user_id, kind, outcome, note, duration_sec) VALUES (?, ?, ?, ?, ?, ?)",
     [lead.id, req.user!.id, body.kind, body.outcome ?? null, body.note ?? null, body.duration_sec ?? null]
-  ).lastId;
+  )).lastId;
   if (body.kind === "call") {
-    run("UPDATE leads SET status = 'contacted', updated_at = datetime('now') WHERE id = ?", [lead.id]);
+    await run("UPDATE leads SET status = 'contacted', updated_at = datetime('now') WHERE id = ?", [lead.id]);
   }
-  audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: `lead.${body.kind}`, entityType: "lead", entityId: lead.id, after: body, ip: clientIp(req) });
+  await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: `lead.${body.kind}`, entityType: "lead", entityId: lead.id, after: body, ip: clientIp(req) });
   res.json({ id });
 }));
 
 /** Convert lead → customer → application. */
 crmRouter.post("/leads/:id/convert", requirePerm("leads.convert"), asyncH(async (req: AuthedRequest, res) => {
   const body = z.object({ product_id: z.number(), requested_amount: z.number(), tenure: z.number(), purpose: z.string().optional() }).parse(req.body);
-  const lead = q1<Record<string, any>>("SELECT * FROM leads WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
+  const lead = await q1<Record<string, any>>("SELECT * FROM leads WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
   if (!lead) { res.status(404).json({ error: "Lead not found" }); return; }
   if (lead.customer_id) {
     res.status(400).json({ error: "Lead already converted" });
     return;
   }
   const custNo = "CUS" + String(10000 + Math.floor(Math.random() * 89999));
-  const customerId = run(
+  const customerId = (await run(
     `INSERT INTO customers (tenant_id, customer_no, name, mobile, email, city, state, monthly_income, business_turnover, kyc_status)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
     [req.user!.tenant_id, custNo, lead.name, lead.mobile ?? null, lead.email ?? null, lead.city ?? null, lead.state ?? null,
      lead.monthly_income ?? null, lead.business_turnover ?? null]
-  ).lastId;
+  )).lastId;
   const appNo = "APP" + new Date().getFullYear().toString().slice(2) + String(Math.floor(100000 + Math.random() * 899999));
-  const appId = run(
+  const appId = (await run(
     `INSERT INTO applications (tenant_id, application_no, lead_id, customer_id, product_id, branch_id, dsa_id, sales_officer_id, source, requested_amount, tenure, purpose, status, stage)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_progress', 'kyc')`,
     [req.user!.tenant_id, appNo, lead.id, customerId, body.product_id, lead.branch_id ?? req.user!.branch_id,
      lead.dsa_id ?? null, lead.owner_id ?? null, lead.source ?? "lead", body.requested_amount, body.tenure, body.purpose ?? null]
-  ).lastId;
-  run("UPDATE leads SET customer_id = ?, status = 'converted', probability = 100, updated_at = datetime('now') WHERE id = ?", [customerId, lead.id]);
-  run("INSERT INTO lead_activities (lead_id, user_id, kind, outcome, note) VALUES (?, ?, 'convert', 'converted', ?)", [lead.id, req.user!.id, `Created application ${appNo}`]);
-  run("INSERT INTO application_stages (application_id, stage, entered_at, status) VALUES (?, 'application', datetime('now'), 'completed')", [appId]);
-  run("INSERT INTO application_stages (application_id, stage, entered_at, status) VALUES (?, 'kyc', datetime('now'), 'in_progress')", [appId]);
-  audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "lead.convert", entityType: "lead", entityId: lead.id, after: { customerId, appId }, ip: clientIp(req) });
+  )).lastId;
+  await run("UPDATE leads SET customer_id = ?, status = 'converted', probability = 100, updated_at = datetime('now') WHERE id = ?", [customerId, lead.id]);
+  await run("INSERT INTO lead_activities (lead_id, user_id, kind, outcome, note) VALUES (?, ?, 'convert', 'converted', ?)", [lead.id, req.user!.id, `Created application ${appNo}`]);
+  await run("INSERT INTO application_stages (application_id, stage, entered_at, status) VALUES (?, 'application', datetime('now'), 'completed')", [appId]);
+  await run("INSERT INTO application_stages (application_id, stage, entered_at, status) VALUES (?, 'kyc', datetime('now'), 'in_progress')", [appId]);
+  await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "lead.convert", entityType: "lead", entityId: lead.id, after: { customerId, appId }, ip: clientIp(req) });
   res.json({ customerId, applicationId: appId, applicationNo: appNo });
 }));
 
@@ -189,8 +189,8 @@ crmRouter.get("/customers", requirePerm("customers.view"), asyncH(async (req: Au
   const params: unknown[] = [req.user!.tenant_id];
   if (query) { where.push("(c.name LIKE ? OR c.mobile LIKE ? OR c.pan LIKE ? OR c.customer_no LIKE ?)"); params.push(`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`); }
   if (status) { where.push("c.status = ?"); params.push(status); }
-  const total = q1<{ n: number }>(`SELECT COUNT(*) AS n FROM customers c WHERE ${where.join(" AND ")}`, params)!.n;
-  const rows = q<Record<string, any>>(
+  const total = (await q1<{ n: number }>(`SELECT COUNT(*) AS n FROM customers c WHERE ${where.join(" AND ")}`, params))!.n;
+  const rows = await q<Record<string, any>>(
     `SELECT c.*,
        (SELECT COUNT(*) FROM loans l WHERE l.customer_id = c.id AND l.status NOT IN ('closed','written_off')) AS active_loans,
        (SELECT COUNT(*) FROM applications a WHERE a.customer_id = c.id) AS applications_count
@@ -223,42 +223,42 @@ const customerSchema = z.object({
 crmRouter.post("/customers", requirePerm("customers.edit"), asyncH(async (req: AuthedRequest, res) => {
   const body = customerSchema.parse(req.body);
   const custNo = "CUS" + String(10000 + Math.floor(Math.random() * 89999));
-  const id = run(
+  const id = (await run(
     `INSERT INTO customers (tenant_id, customer_no, name, mobile, email, dob, gender, pan, address_line1, city, state, pincode, employment_type, business_name, annual_income, monthly_income, business_turnover)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [req.user!.tenant_id, custNo, body.name, body.mobile ?? null, body.email ?? null, body.dob ?? null, body.gender ?? null,
      body.pan ?? null, body.address_line1 ?? null, body.city ?? null, body.state ?? null, body.pincode ?? null,
      body.employment_type ?? null, body.business_name ?? null, body.annual_income ?? null, body.monthly_income ?? null, body.business_turnover ?? null]
-  ).lastId;
-  audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "customer.create", entityType: "customer", entityId: id, after: body, ip: clientIp(req) });
-  res.json(q1("SELECT * FROM customers WHERE id = ?", [id]));
+  )).lastId;
+  await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "customer.create", entityType: "customer", entityId: id, after: body, ip: clientIp(req) });
+  res.json(await q1("SELECT * FROM customers WHERE id = ?", [id]));
 }));
 
 crmRouter.get("/customers/:id", requirePerm("customers.view"), asyncH(async (req: AuthedRequest, res) => {
-  const c = q1<Record<string, any>>("SELECT * FROM customers WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
+  const c = await q1<Record<string, any>>("SELECT * FROM customers WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
   if (!c) { res.status(404).json({ error: "Customer not found" }); return; }
-  const loans = q(`SELECT id, loan_no, principal, outstanding, dpd, status, risk_grade, disbursed_at FROM loans WHERE customer_id = ? ORDER BY id DESC LIMIT 10`, [c.id]);
-  const applications = q(`SELECT id, application_no, requested_amount, status, stage, created_at FROM applications WHERE customer_id = ? ORDER BY id DESC LIMIT 10`, [c.id]);
-  const documents = q(`SELECT id, category, name, status, verified_at, ocr_confidence FROM documents WHERE customer_id = ? ORDER BY id DESC LIMIT 20`, [c.id]);
-  const bureau = q1("SELECT * FROM bureau_reports WHERE customer_id = ? ORDER BY id DESC LIMIT 1", [c.id]);
-  const bank = q1("SELECT * FROM bank_analyses WHERE customer_id = ? ORDER BY id DESC LIMIT 1", [c.id]);
-  const consents = q("SELECT * FROM consents WHERE customer_id = ? ORDER BY id DESC LIMIT 10", [c.id]);
-  const activities = q(
+  const loans = await q(`SELECT id, loan_no, principal, outstanding, dpd, status, risk_grade, disbursed_at FROM loans WHERE customer_id = ? ORDER BY id DESC LIMIT 10`, [c.id]);
+  const applications = await q(`SELECT id, application_no, requested_amount, status, stage, created_at FROM applications WHERE customer_id = ? ORDER BY id DESC LIMIT 10`, [c.id]);
+  const documents = await q(`SELECT id, category, name, status, verified_at, ocr_confidence FROM documents WHERE customer_id = ? ORDER BY id DESC LIMIT 20`, [c.id]);
+  const bureau = await q1("SELECT * FROM bureau_reports WHERE customer_id = ? ORDER BY id DESC LIMIT 1", [c.id]);
+  const bank = await q1("SELECT * FROM bank_analyses WHERE customer_id = ? ORDER BY id DESC LIMIT 1", [c.id]);
+  const consents = await q("SELECT * FROM consents WHERE customer_id = ? ORDER BY id DESC LIMIT 10", [c.id]);
+  const activities = await q(
     `SELECT la.kind, la.outcome, la.note, la.created_at, u.name AS by_name
      FROM lead_activities la LEFT JOIN users u ON u.id = la.user_id WHERE la.lead_id IN (SELECT id FROM leads WHERE customer_id = ?) ORDER BY la.id DESC LIMIT 15`,
     [c.id]
   );
-  const payments = q(`SELECT id, receipt_no, amount, mode, status, received_at FROM payments WHERE customer_id = ? ORDER BY id DESC LIMIT 10`, [c.id]);
-  const exposure = q1<{ total: number }>(
+  const payments = await q(`SELECT id, receipt_no, amount, mode, status, received_at FROM payments WHERE customer_id = ? ORDER BY id DESC LIMIT 10`, [c.id]);
+  const exposure = await q1<{ total: number }>(
     `SELECT COALESCE(SUM(outstanding), 0) AS total FROM loans WHERE customer_id = ? AND status NOT IN ('closed', 'written_off')`, [c.id]
   );
-  const communications = q(`SELECT * FROM lead_activities la WHERE la.lead_id IN (SELECT id FROM leads WHERE customer_id = ?) AND la.kind IN ('call','whatsapp','email') ORDER BY la.id DESC LIMIT 10`, [c.id]);
+  const communications = await q(`SELECT * FROM lead_activities la WHERE la.lead_id IN (SELECT id FROM leads WHERE customer_id = ?) AND la.kind IN ('call','whatsapp','email') ORDER BY la.id DESC LIMIT 10`, [c.id]);
   res.json({ customer: c, loans, applications, documents, bureau, bank, consents, activities, payments, exposure: exposure?.total ?? 0, communications });
 }));
 
 crmRouter.patch("/customers/:id", requirePerm("customers.edit"), asyncH(async (req: AuthedRequest, res) => {
   const body = customerSchema.partial().parse(req.body);
-  const before = q1("SELECT * FROM customers WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
+  const before = await q1("SELECT * FROM customers WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
   if (!before) { res.status(404).json({ error: "Customer not found" }); return; }
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -267,22 +267,22 @@ crmRouter.patch("/customers/:id", requirePerm("customers.edit"), asyncH(async (r
     params.push(v === undefined ? null : v);
   }
   params.push(req.params.id, req.user!.tenant_id);
-  run(`UPDATE customers SET ${sets.join(", ")}, updated_at = datetime('now') WHERE id = ? AND tenant_id = ?`, params);
-  audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "customer.update", entityType: "customer", entityId: before.id, before, after: body, ip: clientIp(req) });
-  res.json(q1("SELECT * FROM customers WHERE id = ?", [before.id]));
+  await run(`UPDATE customers SET ${sets.join(", ")}, updated_at = datetime('now') WHERE id = ? AND tenant_id = ?`, params);
+  await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "customer.update", entityType: "customer", entityId: before.id, before, after: body, ip: clientIp(req) });
+  res.json(await q1("SELECT * FROM customers WHERE id = ?", [before.id]));
 }));
 
 /* ---------- TELE-CALLING QUEUE ---------- */
 
 crmRouter.get("/telecall", requirePerm("leads.view"), asyncH(async (req: AuthedRequest, res) => {
-  const rows = q<Record<string, any>>(
+  const rows = await q<Record<string, any>>(
     `SELECT l.*, u.name AS owner_name FROM leads l LEFT JOIN users u ON u.id = l.owner_id
      WHERE l.tenant_id = ? AND l.status IN ('new', 'assigned', 'contacted', 'followup', 'interested')
      ORDER BY CASE l.status WHEN 'interested' THEN 0 WHEN 'followup' THEN 1 WHEN 'contacted' THEN 2 WHEN 'assigned' THEN 3 ELSE 4 END,
      COALESCE(l.followup_at, '9999') ASC, l.score DESC LIMIT 100`,
     [req.user!.tenant_id]
   );
-  const stats = q<Record<string, any>>(
+  const stats = await q<Record<string, any>>(
     `SELECT COUNT(*) AS total,
        SUM(CASE WHEN status IN ('contacted','followup','interested','converted') THEN 1 ELSE 0 END) AS connected,
        SUM(CASE WHEN status = 'interested' THEN 1 ELSE 0 END) AS interested,
@@ -295,10 +295,10 @@ crmRouter.get("/telecall", requirePerm("leads.view"), asyncH(async (req: AuthedR
 
 crmRouter.get("/crm/summary", requirePerm("leads.view"), asyncH(async (req: AuthedRequest, res) => {
   const t = req.user!.tenant_id;
-  const leads = q1<Record<string, any>>("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'converted' THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id = ?", [t]);
-  const bySource = q("SELECT source, COUNT(*) AS n FROM leads WHERE tenant_id = ? GROUP BY source ORDER BY n DESC", [t]);
-  const followups = q("SELECT COUNT(*) AS n FROM leads WHERE tenant_id = ? AND status IN ('new','followup','interested')", [t]);
-  const byStatus = q("SELECT status, COUNT(*) AS n FROM leads WHERE tenant_id = ? GROUP BY status", [t]);
+  const leads = await q1<Record<string, any>>("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'converted' THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id = ?", [t]);
+  const bySource = await q("SELECT source, COUNT(*) AS n FROM leads WHERE tenant_id = ? GROUP BY source ORDER BY n DESC", [t]);
+  const followups = await q("SELECT COUNT(*) AS n FROM leads WHERE tenant_id = ? AND status IN ('new','followup','interested')", [t]);
+  const byStatus = await q("SELECT status, COUNT(*) AS n FROM leads WHERE tenant_id = ? GROUP BY status", [t]);
   res.json({ leads: leads![0], bySource, byStatus, followups: followups![0].n });
 }));
 

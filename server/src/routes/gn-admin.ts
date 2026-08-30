@@ -20,7 +20,7 @@ const T = (req: AuthedRequest) => req.user!.tenant_id;
 
 gnAdminRouter.get("/gn/admin/me", asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const { perms, scopes, roleRow } = resolveRolePerms(t, req.user!.role);
+  const { perms, scopes, roleRow } = await resolveRolePerms(t, req.user!.role);
   const roleName = roleRow?.name ?? ROLE_LABELS[req.user!.role] ?? req.user!.role;
   const kind = roleRow?.kind ?? "staff";
   res.json({
@@ -37,7 +37,7 @@ gnAdminRouter.get("/gn/admin/me", asyncH(async (req: AuthedRequest, res) => {
 
 gnAdminRouter.get("/gn/admin/roles", requirePerm("gn.settings.view"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const roles = q<Record<string, any>>(
+  const roles = await q<Record<string, any>>(
     `SELECT r.*,
        (SELECT COUNT(*) FROM gn_role_permissions rp WHERE rp.role_id = r.id AND rp.allowed = 1) AS allowed_perms,
        (SELECT COUNT(*) FROM users u WHERE u.role = r.code AND u.tenant_id = r.tenant_id) AS users
@@ -57,20 +57,20 @@ gnAdminRouter.post("/gn/admin/roles", requirePerm("gn.settings.manage"), asyncH(
   const t = T(req);
   const b = roleSchema.parse(req.body);
   let code = b.code ?? b.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  const exists = q1("SELECT id FROM gn_roles WHERE tenant_id = ? AND code = ?", [t, code]);
+  const exists = await q1("SELECT id FROM gn_roles WHERE tenant_id = ? AND code = ?", [t, code]);
   if (exists) code = `${code}_${Math.floor(Math.random() * 9000 + 1000)}`;
-  const id = run(
+  const id = (await run(
     "INSERT INTO gn_roles (tenant_id, code, name, kind, designation, partner_type, is_system) VALUES (?, ?, ?, ?, ?, ?, 0)",
     [t, code, b.name, b.kind ?? "staff", b.designation ?? null, b.partner_type ?? null]
-  ).lastId;
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.role.create", entityType: "gn_role", entityId: id, after: b, ip: clientIp(req) });
-  res.json(q1("SELECT * FROM gn_roles WHERE id = ?", [id]));
+  )).lastId;
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.role.create", entityType: "gn_role", entityId: id, after: b, ip: clientIp(req) });
+  res.json(await q1("SELECT * FROM gn_roles WHERE id = ?", [id]));
 }));
 
 gnAdminRouter.patch("/gn/admin/roles/:id", requirePerm("gn.settings.manage"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
   const b = roleSchema.partial().parse(req.body);
-  const before = q1("SELECT * FROM gn_roles WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const before = await q1("SELECT * FROM gn_roles WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!before) { res.status(404).json({ error: "Role not found" }); return; }
   if (before.is_system) {
     const allowed = ["name", "designation", "partner_type"];
@@ -78,21 +78,21 @@ gnAdminRouter.patch("/gn/admin/roles/:id", requirePerm("gn.settings.manage"), as
   }
   if (Object.keys(b).length === 0) { res.json(before); return; }
   const sets = Object.keys(b).map((k) => `${k} = ?`);
-  run(`UPDATE gn_roles SET ${sets.join(", ")} WHERE id = ?`, [...Object.values(b), before.id]);
+  await run(`UPDATE gn_roles SET ${sets.join(", ")} WHERE id = ?`, [...Object.values(b), before.id]);
   clearPermCache(t);
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.role.update", entityType: "gn_role", entityId: before.id, before, after: b, ip: clientIp(req) });
-  res.json(q1("SELECT * FROM gn_roles WHERE id = ?", [before.id]));
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.role.update", entityType: "gn_role", entityId: before.id, before, after: b, ip: clientIp(req) });
+  res.json(await q1("SELECT * FROM gn_roles WHERE id = ?", [before.id]));
 }));
 
 gnAdminRouter.delete("/gn/admin/roles/:id", requirePerm("gn.settings.manage"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const before = q1<{ id: number; is_system: number }>("SELECT id, is_system FROM gn_roles WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const before = await q1<{ id: number; is_system: number }>("SELECT id, is_system FROM gn_roles WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!before) { res.status(404).json({ error: "Role not found" }); return; }
   if (before.is_system) { res.status(400).json({ error: "System roles cannot be deleted" }); return; }
-  run("DELETE FROM gn_role_permissions WHERE role_id = ?", [before.id]);
-  run("DELETE FROM gn_roles WHERE id = ?", [before.id]);
+  await run("DELETE FROM gn_role_permissions WHERE role_id = ?", [before.id]);
+  await run("DELETE FROM gn_roles WHERE id = ?", [before.id]);
   clearPermCache(t);
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.role.delete", entityType: "gn_role", entityId: before.id, ip: clientIp(req) });
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.role.delete", entityType: "gn_role", entityId: before.id, ip: clientIp(req) });
   res.json({ ok: true });
 }));
 
@@ -100,9 +100,9 @@ gnAdminRouter.delete("/gn/admin/roles/:id", requirePerm("gn.settings.manage"), a
 
 gnAdminRouter.get("/gn/admin/roles/:id/permissions", requirePerm("gn.settings.view"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const role = q1("SELECT * FROM gn_roles WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const role = await q1("SELECT * FROM gn_roles WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!role) { res.status(404).json({ error: "Role not found" }); return; }
-  const rows = q<Record<string, any>>(
+  const rows = await q<Record<string, any>>(
     "SELECT module, action, scope, allowed FROM gn_role_permissions WHERE role_id = ?", [role.id]);
   const grid: Record<string, Record<string, { allowed: boolean; scope: string }>> = {};
   for (const m of GN_MODULES) {
@@ -121,13 +121,13 @@ const gridSaveSchema = z.object({
 
 gnAdminRouter.post("/gn/admin/roles/:id/permissions", requirePerm("gn.settings.manage"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const role = q1<{ id: number; code: string }>("SELECT id, code FROM gn_roles WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const role = await q1<{ id: number; code: string }>("SELECT id, code FROM gn_roles WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!role) { res.status(404).json({ error: "Role not found" }); return; }
   const b = gridSaveSchema.parse(req.body);
-  tx(() => {
-    run("DELETE FROM gn_role_permissions WHERE role_id = ?", [role.id]);
+  await tx(async () => {
+    await run("DELETE FROM gn_role_permissions WHERE role_id = ?", [role.id]);
     for (const r of b.rows) {
-      run(
+      await run(
         "INSERT INTO gn_role_permissions (tenant_id, role_id, module, action, scope, allowed) VALUES (?, ?, ?, ?, ?, ?)",
         [t, role.id, r.module, r.action, r.scope ?? "all", r.allowed ? 1 : 0]
       );
@@ -135,7 +135,7 @@ gnAdminRouter.post("/gn/admin/roles/:id/permissions", requirePerm("gn.settings.m
   });
   clearPermCache(t);
   const granted = b.rows.filter((r) => r.allowed).length;
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.role.permissions.save", entityType: "gn_role", entityId: role.id, after: { role: role.code, granted }, ip: clientIp(req) });
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.role.permissions.save", entityType: "gn_role", entityId: role.id, after: { role: role.code, granted }, ip: clientIp(req) });
   res.json({ ok: true, granted });
 }));
 
@@ -145,7 +145,7 @@ const SETTING_KEYS = ["gn_company", "gn_api_keys", "gn_leave_types", "gn_holiday
 
 gnAdminRouter.get("/gn/admin/settings", requirePerm("gn.settings.view"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const rows = q<{ key: string; value: string }>("SELECT key, value FROM system_config WHERE tenant_id = ? AND key IN (" + SETTING_KEYS.map(() => "?").join(",") + ")", [t, ...SETTING_KEYS]);
+  const rows = await q<{ key: string; value: string }>("SELECT key, value FROM system_config WHERE tenant_id = ? AND key IN (" + SETTING_KEYS.map(() => "?").join(",") + ")", [t, ...SETTING_KEYS]);
   const out: Record<string, any> = {};
   for (const r of rows) {
     try { out[r.key] = JSON.parse(r.value); } catch { out[r.key] = r.value; }
@@ -153,7 +153,7 @@ gnAdminRouter.get("/gn/admin/settings", requirePerm("gn.settings.view"), asyncH(
   res.json({
     keys: SETTING_KEYS,
     ...out,
-    gn_roles_count: (q1<{ n: number }>("SELECT COUNT(*) AS n FROM gn_roles WHERE tenant_id = ?", [t])?.n ?? 0)
+    gn_roles_count: ((await q1<{ n: number }>("SELECT COUNT(*) AS n FROM gn_roles WHERE tenant_id = ?", [t]))?.n ?? 0)
   });
 }));
 
@@ -165,9 +165,9 @@ const settingSaveSchema = z.object({
 gnAdminRouter.post("/gn/admin/settings", requirePerm("gn.settings.manage"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
   const b = settingSaveSchema.parse(req.body);
-  const before = q1("SELECT value FROM system_config WHERE tenant_id = ? AND key = ?", [t, b.key]);
-  run("INSERT OR REPLACE INTO system_config (tenant_id, key, value) VALUES (?, ?, ?)", [t, b.key, JSON.stringify(b.value)]);
-  audit({ tenantId: t, userId: req.user!.id, action: `gn.settings.${b.key}.save`, entityType: "system_config", before: before ? { value: before.value } : null, after: { value: b.value }, ip: clientIp(req) });
+  const before = await q1("SELECT value FROM system_config WHERE tenant_id = ? AND key = ?", [t, b.key]);
+  await run("INSERT OR REPLACE INTO system_config (tenant_id, key, value) VALUES (?, ?, ?)", [t, b.key, JSON.stringify(b.value)]);
+  await audit({ tenantId: t, userId: req.user!.id, action: `gn.settings.${b.key}.save`, entityType: "system_config", before: before ? { value: before.value } : null, after: { value: b.value }, ip: clientIp(req) });
   res.json({ ok: true, key: b.key });
 }));
 
@@ -175,7 +175,7 @@ gnAdminRouter.post("/gn/admin/settings", requirePerm("gn.settings.manage"), asyn
 
 gnAdminRouter.get("/gn/admin/api-keys", requirePerm("gn.settings.view"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const row = q1<{ value: string }>("SELECT value FROM system_config WHERE tenant_id = ? AND key = 'gn_api_keys'", [t]);
+  const row = await q1<{ value: string }>("SELECT value FROM system_config WHERE tenant_id = ? AND key = 'gn_api_keys'", [t]);
   let keys: any[] = [];
   try { keys = row ? JSON.parse(row.value) : []; } catch { keys = []; }
   res.json(keys.map((k) => ({ ...k, key: k.key ? `${k.key.slice(0, 6)}••••••${k.key.slice(-4)}` : null })));
@@ -184,25 +184,25 @@ gnAdminRouter.get("/gn/admin/api-keys", requirePerm("gn.settings.view"), asyncH(
 gnAdminRouter.post("/gn/admin/api-keys", requirePerm("gn.settings.manage"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
   const b = z.object({ label: z.string().min(2) }).parse(req.body);
-  const row = q1<{ value: string }>("SELECT value FROM system_config WHERE tenant_id = ? AND key = 'gn_api_keys'", [t]);
+  const row = await q1<{ value: string }>("SELECT value FROM system_config WHERE tenant_id = ? AND key = 'gn_api_keys'", [t]);
   let keys: any[] = [];
   try { keys = row ? JSON.parse(row.value) : []; } catch { keys = []; }
   const plain = `gn_live_${randomBytes(16).toString("hex")}`;
   keys.unshift({ id: Date.now(), label: b.label, key: plain, created_at: new Date().toISOString(), status: "active", last_used: null });
-  run("INSERT OR REPLACE INTO system_config (tenant_id, key, value) VALUES (?, 'gn_api_keys', ?)", [t, JSON.stringify(keys)]);
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.api_key.create", entityType: "system_config", after: { label: b.label }, ip: clientIp(req) });
+  await run("INSERT OR REPLACE INTO system_config (tenant_id, key, value) VALUES (?, 'gn_api_keys', ?)", [t, JSON.stringify(keys)]);
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.api_key.create", entityType: "system_config", after: { label: b.label }, ip: clientIp(req) });
   res.json({ ok: true, key: plain, label: b.label });
 }));
 
 gnAdminRouter.delete("/gn/admin/api-keys/:id", requirePerm("gn.settings.manage"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const row = q1<{ value: string }>("SELECT value FROM system_config WHERE tenant_id = ? AND key = 'gn_api_keys'", [t]);
+  const row = await q1<{ value: string }>("SELECT value FROM system_config WHERE tenant_id = ? AND key = 'gn_api_keys'", [t]);
   let keys: any[] = [];
   try { keys = row ? JSON.parse(row.value) : []; } catch { keys = []; }
   const id = Number(req.params.id);
   keys = keys.filter((k) => k.id !== id);
-  run("INSERT OR REPLACE INTO system_config (tenant_id, key, value) VALUES (?, 'gn_api_keys', ?)", [t, JSON.stringify(keys)]);
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.api_key.revoke", entityType: "system_config", entityId: id, ip: clientIp(req) });
+  await run("INSERT OR REPLACE INTO system_config (tenant_id, key, value) VALUES (?, 'gn_api_keys', ?)", [t, JSON.stringify(keys)]);
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.api_key.revoke", entityType: "system_config", entityId: id, ip: clientIp(req) });
   res.json({ ok: true });
 }));
 
@@ -217,11 +217,11 @@ gnAdminRouter.post("/gn/admin/start-fresh", requirePerm("gn.settings.manage"), a
     "gn_expenses", "gn_customer_fees", "gn_payout_batches", "gn_commissions", "gn_application_timeline", "gn_applications", "gn_tasks"];
   const counts: Record<string, number> = {};
   for (const tbl of tables) {
-    const c = q1<{ n: number }>(`SELECT COUNT(*) AS n FROM ${tbl} WHERE tenant_id = ?`, [t])?.n ?? 0;
-    run(`DELETE FROM ${tbl} WHERE tenant_id = ?`, [t]);
+    const c = (await q1<{ n: number }>(`SELECT COUNT(*) AS n FROM ${tbl} WHERE tenant_id = ?`, [t]))?.n ?? 0;
+    await run(`DELETE FROM ${tbl} WHERE tenant_id = ?`, [t]);
     counts[tbl] = c;
   }
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.start_fresh", entityType: "tenant", entityId: t, after: counts, ip: clientIp(req) });
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.start_fresh", entityType: "tenant", entityId: t, after: counts, ip: clientIp(req) });
   res.json({ ok: true, cleared: counts });
 }));
 
@@ -263,7 +263,7 @@ const schemeSchema = z.object({
 });
 
 gnAdminRouter.get("/gn/schemes/:id", requirePerm("gn.masters.view"), asyncH(async (req: AuthedRequest, res) => {
-  const row = q1<Record<string, any>>(
+  const row = await q1<Record<string, any>>(
     `SELECT s.*, l.name AS lender_name, p.name AS product_name, p.category AS product_category
      FROM gn_schemes s JOIN gn_lenders l ON l.id = s.lender_id LEFT JOIN gn_products p ON p.id = s.product_id
      WHERE s.id = ? AND s.tenant_id = ?`, [req.params.id, T(req)]);
@@ -276,7 +276,7 @@ gnAdminRouter.get("/gn/schemes/:id", requirePerm("gn.masters.view"), asyncH(asyn
 
 gnAdminRouter.post("/gn/schemes", requirePerm("gn.masters.manage"), asyncH(async (req: AuthedRequest, res) => {
   const b = schemeSchema.parse(req.body);
-  const id = run(
+  const id = (await run(
     `INSERT INTO gn_schemes (tenant_id, lender_id, product_id, name, payout_type, rate, flat_amount, slabs,
        effective_from, effective_to, status, profile, states, loan_params, eligibility, programs, purposes, usp, commission_pct, policy, source, notes,
        banker_name, banker_email, banker_phone, branch, sub_product)
@@ -287,21 +287,21 @@ gnAdminRouter.post("/gn/schemes", requirePerm("gn.masters.manage"), asyncH(async
      JSON.stringify(b.programs ?? []), JSON.stringify(b.purposes ?? []), b.usp ?? null, b.commission_pct ?? b.rate ?? 0,
      JSON.stringify(b.policy ?? {}), b.source ?? "manual", b.notes ?? null,
      b.banker_name ?? null, b.banker_email ?? null, b.banker_phone ?? null, b.branch ?? null, b.sub_product ?? null]
-  ).lastId;
+  )).lastId;
   // Store the banker circular / scheme document (PDF, image, Excel) alongside the scheme
   if (b.circular_file?.data) {
     const buf = Buffer.from(b.circular_file.data, "base64");
-    run(
+    await run(
       "INSERT INTO gn_scheme_files (tenant_id, scheme_id, kind, filename, mime, size, content, status) VALUES (?, ?, 'circular', ?, ?, ?, ?, 'stored')",
       [T(req), id, b.circular_file.filename || "circular.pdf", b.circular_file.mime || "application/octet-stream", buf.length, b.circular_file.data]
     );
   }
-  audit({ tenantId: T(req), userId: req.user!.id, action: "gn.scheme.create", entityType: "gn_scheme", entityId: id, after: b, ip: clientIp(req) });
-  res.json(q1("SELECT * FROM gn_schemes WHERE id = ?", [id]));
+  await audit({ tenantId: T(req), userId: req.user!.id, action: "gn.scheme.create", entityType: "gn_scheme", entityId: id, after: b, ip: clientIp(req) });
+  res.json(await q1("SELECT * FROM gn_schemes WHERE id = ?", [id]));
 }));
 
 gnAdminRouter.get("/gn/schemes/:id/files", requirePerm("gn.masters.view"), asyncH(async (req: AuthedRequest, res) => {
-  const rows = q<Record<string, any>>(
+  const rows = await q<Record<string, any>>(
     "SELECT id, kind, filename, mime, size, status, notes, created_at, (content IS NOT NULL) AS has_content FROM gn_scheme_files WHERE tenant_id = ? AND scheme_id = ? ORDER BY id DESC",
     [T(req), req.params.id]
   );
@@ -309,7 +309,7 @@ gnAdminRouter.get("/gn/schemes/:id/files", requirePerm("gn.masters.view"), async
 }));
 
 gnAdminRouter.get("/gn/scheme-files", requirePerm("gn.masters.view"), asyncH(async (req: AuthedRequest, res) => {
-  const rows = q<Record<string, any>>(
+  const rows = await q<Record<string, any>>(
     `SELECT f.id, f.kind, f.filename, f.mime, f.size, f.status, f.notes, f.created_at,
             (f.content IS NOT NULL) AS has_content, s.name AS scheme_name, l.name AS lender_name
      FROM gn_scheme_files f
@@ -322,7 +322,7 @@ gnAdminRouter.get("/gn/scheme-files", requirePerm("gn.masters.view"), asyncH(asy
 }));
 
 gnAdminRouter.get("/gn/scheme-files/:id/download", requirePerm("gn.masters.view"), asyncH(async (req: AuthedRequest, res) => {
-  const row = q1<{ content: string | null; filename: string; mime: string }>(
+  const row = await q1<{ content: string | null; filename: string; mime: string }>(
     "SELECT content, filename, mime FROM gn_scheme_files WHERE id = ? AND tenant_id = ?", [req.params.id, T(req)]
   );
   if (!row || !row.content) { res.status(404).json({ error: "File not found" }); return; }
@@ -333,17 +333,17 @@ gnAdminRouter.get("/gn/scheme-files/:id/download", requirePerm("gn.masters.view"
 
 gnAdminRouter.delete("/gn/scheme-files/:id", requirePerm("gn.masters.manage"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const before = q1<{ id: number; filename: string }>("SELECT id, filename FROM gn_scheme_files WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const before = await q1<{ id: number; filename: string }>("SELECT id, filename FROM gn_scheme_files WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!before) { res.status(404).json({ error: "Not found" }); return; }
-  run("DELETE FROM gn_scheme_files WHERE id = ?", [before.id]);
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.scheme_file.delete", entityType: "gn_scheme_file", entityId: before.id, before: { filename: before.filename }, ip: clientIp(req) });
+  await run("DELETE FROM gn_scheme_files WHERE id = ?", [before.id]);
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.scheme_file.delete", entityType: "gn_scheme_file", entityId: before.id, before: { filename: before.filename }, ip: clientIp(req) });
   res.json({ ok: true });
 }));
 
 gnAdminRouter.patch("/gn/schemes/:id", requirePerm("gn.masters.manage"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
   const b = schemeSchema.partial().parse(req.body);
-  const before = q1("SELECT * FROM gn_schemes WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const before = await q1("SELECT * FROM gn_schemes WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!before) { res.status(404).json({ error: "Scheme not found" }); return; }
   const flat: Record<string, any> = { ...b };
   delete flat.slabs; delete flat.states; delete flat.loan_params; delete flat.eligibility; delete flat.programs; delete flat.purposes; delete flat.policy;
@@ -356,9 +356,9 @@ gnAdminRouter.patch("/gn/schemes/:id", requirePerm("gn.masters.manage"), asyncH(
   for (const [col, dflt] of jsonCols) {
     if ((b as any)[col] !== undefined) { sets.push(`${col} = ?`); params.push(JSON.stringify((b as any)[col] ?? (dflt === "[]" ? [] : {}))); }
   }
-  run(`UPDATE gn_schemes SET ${sets.join(", ")} WHERE id = ?`, [...params, before.id]);
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.scheme.update", entityType: "gn_scheme", entityId: before.id, before: { name: before.name, status: before.status }, after: b, ip: clientIp(req) });
-  res.json(q1("SELECT * FROM gn_schemes WHERE id = ?", [before.id]));
+  await run(`UPDATE gn_schemes SET ${sets.join(", ")} WHERE id = ?`, [...params, before.id]);
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.scheme.update", entityType: "gn_scheme", entityId: before.id, before: { name: before.name, status: before.status }, after: b, ip: clientIp(req) });
+  res.json(await q1("SELECT * FROM gn_schemes WHERE id = ?", [before.id]));
 }));
 
 /** Matcher Configuration V2 — scores customer profiles against full scheme eligibility blocks. */
@@ -374,11 +374,11 @@ gnAdminRouter.post("/gn/match/v2", requirePerm("gn.masters.view"), asyncH(async 
     ltv: z.number().nullable().optional(),
     existing_exposure: z.number().nullable().optional(), programs: z.array(z.string()).optional()
   }).parse(req.body);
-  const schemes = q<Record<string, any>>(
+  const schemes = await q<Record<string, any>>(
     `SELECT s.*, l.name AS lender_name, p.name AS product_name, p.category AS product_category
      FROM gn_schemes s JOIN gn_lenders l ON l.id = s.lender_id LEFT JOIN gn_products p ON p.id = s.product_id
      WHERE s.tenant_id = ? AND s.status = 'active'`, [t]);
-  const matches = schemes.map((s) => {
+  const matches = await Promise.all(schemes.map(async (s) => {
     const reasons: string[] = [];
     let ok = true;
     let maybe = false;
@@ -427,7 +427,7 @@ gnAdminRouter.post("/gn/match/v2", requirePerm("gn.masters.view"), asyncH(async 
     // BT (balance transfer) gating — scheme allows BT only when the applicant's program is BT
     if (el.bt_allowed === false && b.programs?.includes("Balance Transfer")) { ok = false; reasons.push("BT not allowed on this scheme"); }
     const status: "eligible" | "maybe" | "not_eligible" = ok ? "eligible" : maybe ? "maybe" : "not_eligible";
-    const settings = gnSettings(t);
+    const settings = await gnSettings(t);
     const payout = s.commission_pct ?? s.rate ?? 0;
     const commission = computeCommission(b.amount, payout, settings);
     return {
@@ -438,7 +438,7 @@ gnAdminRouter.post("/gn/match/v2", requirePerm("gn.masters.view"), asyncH(async 
       max_ltv: el.max_ltv, max_foir: el.max_foir, programs, states: states.length ? states : ["All India"],
       status, reasons, commission
     };
-  });
+  }));
   const rank = { eligible: 0, maybe: 1, not_eligible: 2 };
   matches.sort((a, b) => rank[a.status] - rank[b.status]);
   res.json({
@@ -514,7 +514,7 @@ gnAdminRouter.get("/gn/export/:entity", requirePerm("gn.view"), asyncH(async (re
   const t = T(req);
   const def = EXPORT_ENTITIES[req.params.entity];
   if (!def) { res.status(400).json({ error: `Unknown entity: ${req.params.entity}` }); return; }
-  const rows = q<Record<string, any>>(`SELECT ${def.select} FROM ${def.table} a ${def.where} WHERE a.tenant_id = ? ${def.filter ? `AND ${def.filter}` : ""} ORDER BY a.id DESC`, [t]);
+  const rows = await q<Record<string, any>>(`SELECT ${def.select} FROM ${def.table} a ${def.where} WHERE a.tenant_id = ? ${def.filter ? `AND ${def.filter}` : ""} ORDER BY a.id DESC`, [t]);
   const csv = toCsv(rows);
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="gn_${req.params.entity}_${new Date().toISOString().slice(0, 10)}.csv"`);
@@ -533,12 +533,12 @@ gnAdminRouter.post("/gn/import/:entity", requirePerm("gn.*"), asyncH(async (req:
 
   const inserted: number[] = [];
   const errors: { row: number; error: string }[] = [];
-  const lenderByName = new Map((q<{ id: number; name: string }>("SELECT id, name FROM gn_lenders WHERE tenant_id = ?", [t]) ?? []).map((r) => [r.name, r.id]));
-  const productByName = new Map((q<{ id: number; name: string }>("SELECT id, name FROM gn_products WHERE tenant_id = ?", [t]) ?? []).map((r) => [r.name, r.id]));
-  const partnerByName = new Map((q<{ id: number; name: string }>("SELECT id, name FROM gn_partners WHERE tenant_id = ?", [t]) ?? []).map((r) => [r.name, r.id]));
-  const schemeByName = new Map((q<{ id: number; name: string }>("SELECT id, name FROM gn_schemes WHERE tenant_id = ?", [t]) ?? []).map((r) => [r.name, r.id]));
+  const lenderByName = new Map((await q<{ id: number; name: string }>("SELECT id, name FROM gn_lenders WHERE tenant_id = ?", [t]) ?? []).map((r) => [r.name, r.id]));
+  const productByName = new Map((await q<{ id: number; name: string }>("SELECT id, name FROM gn_products WHERE tenant_id = ?", [t]) ?? []).map((r) => [r.name, r.id]));
+  const partnerByName = new Map((await q<{ id: number; name: string }>("SELECT id, name FROM gn_partners WHERE tenant_id = ?", [t]) ?? []).map((r) => [r.name, r.id]));
+  const schemeByName = new Map((await q<{ id: number; name: string }>("SELECT id, name FROM gn_schemes WHERE tenant_id = ?", [t]) ?? []).map((r) => [r.name, r.id]));
 
-  rows.forEach((raw, i) => {
+  for (const [i, raw] of rows.entries()) {
     const r: Record<string, any> = {};
     for (const k of Object.keys(raw)) r[k.toLowerCase().replace(/[^a-z0-9_]/g, "_")] = raw[k];
     const num = (v: any) => (v === "" || v === null || v === undefined ? null : Number(String(v).replace(/[₹,\s]/g, "")));
@@ -555,22 +555,22 @@ gnAdminRouter.post("/gn/import/:entity", requirePerm("gn.*"), asyncH(async (req:
           const status = r.status && GN_STATUS.some((s) => s.slug === r.status) ? r.status : "app_created";
           const stage = r.stage || (GN_STATUS.find((s) => s.slug === status)?.group === "lead" ? "lead" : "application");
           const year = new Date().getFullYear();
-          const seq = (q1<{ n: number }>("SELECT COUNT(*) AS n FROM gn_applications WHERE tenant_id = ?", [t])?.n ?? 0) + i + 1;
+          const seq = ((await q1<{ n: number }>("SELECT COUNT(*) AS n FROM gn_applications WHERE tenant_id = ?", [t]))?.n ?? 0) + i + 1;
           const ref = r.ref ?? `GN-${year}-${String(10000 + seq)}`;
-          const id = run(
+          const id = (await run(
             `INSERT INTO gn_applications (tenant_id, ref, name, mobile, email, city, state, employment_type, monthly_income, business_turnover, business_vintage, loan_type, product_id, lender_id, scheme_id, dsa_code, partner_id, amount, tenure, purpose, status, stage, source, notes)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [t, ref, r.name, r.mobile, str(r.email), str(r.city), str(r.state), str(r.employment_type), num(r.monthly_income), num(r.business_turnover), num(r.business_vintage),
              str(r.loan_type), productId, lenderId, schemeId, str(r.dsa_code), partnerId, num(r.amount) ?? 0, num(r.tenure) ?? 12, str(r.purpose), status, stage, str(r.source) ?? "dsa", str(r.notes)]
-          ).lastId;
+          )).lastId;
           inserted.push(id);
           break;
         }
         case "applicants": {
           if (!r.name || !r.mobile) throw new Error("name + mobile required");
-          const seq = (q1<{ n: number }>("SELECT COUNT(*) AS n FROM gn_applicants WHERE tenant_id = ?", [t])?.n ?? 0) + i + 1;
+          const seq = ((await q1<{ n: number }>("SELECT COUNT(*) AS n FROM gn_applicants WHERE tenant_id = ?", [t]))?.n ?? 0) + i + 1;
           const ref = r.ref ?? `GN-APL-${new Date().getFullYear()}-${String(10000 + seq)}`;
-          const id = run(
+          const id = (await run(
             `INSERT INTO gn_applicants (tenant_id, ref, name, mobile, email, pan, dob, city, state, pincode, applicant_type, employment_type,
                business_name, business_type, business_vintage, monthly_income, annual_turnover, loan_type, loan_amount, tenure, purpose, source, notes)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -578,14 +578,14 @@ gnAdminRouter.post("/gn/import/:entity", requirePerm("gn.*"), asyncH(async (req:
              str(r.applicant_type) ?? "Individual", str(r.employment_type), str(r.business_name), str(r.business_type), num(r.business_vintage),
              num(r.monthly_income), num(r.annual_turnover), str(r.loan_type), num(r.loan_amount), num(r.tenure), str(r.purpose),
              str(r.source) ?? "import", str(r.notes)]
-          ).lastId;
+          )).lastId;
           inserted.push(id);
           break;
         }
         case "lenders": {
           if (!r.name) throw new Error("name required");
-          const id = run("INSERT INTO gn_lenders (tenant_id, name, type, dsa_code, api_status, status) VALUES (?, ?, ?, ?, ?, ?)",
-            [t, r.name, str(r.type) ?? "Bank", str(r.dsa_code), str(r.api_status) ?? "mock", str(r.status) ?? "active"]).lastId;
+          const id = (await run("INSERT INTO gn_lenders (tenant_id, name, type, dsa_code, api_status, status) VALUES (?, ?, ?, ?, ?, ?)",
+            [t, r.name, str(r.type) ?? "Bank", str(r.dsa_code), str(r.api_status) ?? "mock", str(r.status) ?? "active"])).lastId;
           inserted.push(id);
           break;
         }
@@ -593,89 +593,89 @@ gnAdminRouter.post("/gn/import/:entity", requirePerm("gn.*"), asyncH(async (req:
           if (!r.name || !r.category || !r.lender_name && !r.lender_id) throw new Error("name + category + lender required");
           const lenderId = r.lender_id ? Number(r.lender_id) : lenderByName.get(r.lender_name);
           if (!lenderId) throw new Error(`Unknown lender: ${r.lender_name}`);
-          const id = run(
+          const id = (await run(
             `INSERT INTO gn_products (tenant_id, lender_id, category, name, min_amount, max_amount, min_tenure, max_tenure, roi_min, roi_max, processing_fee_pct, payout_pct, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [t, lenderId, r.category, r.name, num(r.min_amount) ?? 100000, num(r.max_amount) ?? 5000000, num(r.min_tenure) ?? 12, num(r.max_tenure) ?? 60,
-             num(r.roi_min), num(r.roi_max), num(r.processing_fee_pct) ?? 0, num(r.payout_pct) ?? 0, str(r.status) ?? "active"]).lastId;
+             num(r.roi_min), num(r.roi_max), num(r.processing_fee_pct) ?? 0, num(r.payout_pct) ?? 0, str(r.status) ?? "active"])).lastId;
           inserted.push(id);
           break;
         }
         case "schemes": {
-          inserted.push(importSchemeRow(t, r, lenderByName, "import"));
+          inserted.push(await importSchemeRow(t, r, lenderByName, "import"));
           break;
         }
         case "partners": {
           if (!r.name) throw new Error("name required");
-          const id = run("INSERT INTO gn_partners (tenant_id, name, type, phone, email, commission_pct, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [t, r.name, str(r.type) ?? "DSA", str(r.phone), str(r.email), num(r.commission_pct) ?? 0, str(r.status) ?? "active"]).lastId;
+          const id = (await run("INSERT INTO gn_partners (tenant_id, name, type, phone, email, commission_pct, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [t, r.name, str(r.type) ?? "DSA", str(r.phone), str(r.email), num(r.commission_pct) ?? 0, str(r.status) ?? "active"])).lastId;
           inserted.push(id);
           break;
         }
         case "tasks": {
           if (!r.title) throw new Error("title required");
-          const id = run("INSERT INTO gn_tasks (tenant_id, title, priority, status, due_at, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-            [t, r.title, str(r.priority) ?? "medium", str(r.status) ?? "pending", str(r.due_at), req.user!.id]).lastId;
+          const id = (await run("INSERT INTO gn_tasks (tenant_id, title, priority, status, due_at, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+            [t, r.title, str(r.priority) ?? "medium", str(r.status) ?? "pending", str(r.due_at), req.user!.id])).lastId;
           inserted.push(id);
           break;
         }
         case "expenses": {
           if (!r.title && !r.category) throw new Error("title/category required");
-          const id = run("INSERT INTO gn_expenses (tenant_id, title, category, vendor, amount, paid, expense_date) VALUES (?, ?, ?, ?, ?, 0, ?)",
-            [t, str(r.title) ?? str(r.category) ?? "Expense", str(r.category) ?? "operations", str(r.vendor), num(r.amount) ?? 0, str(r.expense_date) ?? str(r.date) ?? new Date().toISOString().slice(0, 10)]).lastId;
+          const id = (await run("INSERT INTO gn_expenses (tenant_id, title, category, vendor, amount, paid, expense_date) VALUES (?, ?, ?, ?, ?, 0, ?)",
+            [t, str(r.title) ?? str(r.category) ?? "Expense", str(r.category) ?? "operations", str(r.vendor), num(r.amount) ?? 0, str(r.expense_date) ?? str(r.date) ?? new Date().toISOString().slice(0, 10)])).lastId;
           inserted.push(id);
           break;
         }
         case "fees": {
           if (!r.app_id) throw new Error("app_id required");
-          const id = run("INSERT INTO gn_customer_fees (tenant_id, app_id, processing, insurance, rto, other, disbursed_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [t, Number(r.app_id), num(r.processing) ?? 0, num(r.insurance) ?? 0, num(r.rto) ?? 0, num(r.other) ?? 0, str(r.disbursed_at)]).lastId;
+          const id = (await run("INSERT INTO gn_customer_fees (tenant_id, app_id, processing, insurance, rto, other, disbursed_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [t, Number(r.app_id), num(r.processing) ?? 0, num(r.insurance) ?? 0, num(r.rto) ?? 0, num(r.other) ?? 0, str(r.disbursed_at)])).lastId;
           inserted.push(id);
           break;
         }
         case "campaigns": {
           if (!r.name) throw new Error("name required");
-          const id = run("INSERT INTO gn_campaigns (tenant_id, name, channel, spend, leads, applications, disbursed_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [t, r.name, str(r.channel) ?? "meta", num(r.spend) ?? 0, num(r.leads) ?? 0, num(r.applications) ?? 0, num(r.disbursed_amount) ?? 0, str(r.status) ?? "active"]).lastId;
+          const id = (await run("INSERT INTO gn_campaigns (tenant_id, name, channel, spend, leads, applications, disbursed_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [t, r.name, str(r.channel) ?? "meta", num(r.spend) ?? 0, num(r.leads) ?? 0, num(r.applications) ?? 0, num(r.disbursed_amount) ?? 0, str(r.status) ?? "active"])).lastId;
           inserted.push(id);
           break;
         }
         case "customers": {
           if (!r.name) throw new Error("name required");
-          const seq = (q1<{ n: number }>("SELECT COUNT(*) AS n FROM customers WHERE tenant_id = ?", [t])?.n ?? 0) + i + 1;
-          const id = run(
+          const seq = ((await q1<{ n: number }>("SELECT COUNT(*) AS n FROM customers WHERE tenant_id = ?", [t]))?.n ?? 0) + i + 1;
+          const id = (await run(
             `INSERT INTO customers (tenant_id, customer_no, name, mobile, email, dob, gender, pan, address_line1, city, state, pincode, employment_type, business_name, annual_income, monthly_income, business_turnover, credit_score)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [t, r.customer_no ?? `CUS${String(10000 + seq)}`, r.name, str(r.mobile), str(r.email), str(r.dob), str(r.gender), str(r.pan), str(r.address_line1), str(r.city), str(r.state), str(r.pincode),
-             str(r.employment_type), str(r.business_name), num(r.annual_income), num(r.monthly_income), num(r.business_turnover), num(r.credit_score)]).lastId;
+             str(r.employment_type), str(r.business_name), num(r.annual_income), num(r.monthly_income), num(r.business_turnover), num(r.credit_score)])).lastId;
           inserted.push(id);
           break;
         }
         case "core_leads": {
           if (!r.name) throw new Error("name required");
-          const seq = (q1<{ n: number }>("SELECT COUNT(*) AS n FROM leads WHERE tenant_id = ?", [t])?.n ?? 0) + i + 1;
-          const id = run(
+          const seq = ((await q1<{ n: number }>("SELECT COUNT(*) AS n FROM leads WHERE tenant_id = ?", [t]))?.n ?? 0) + i + 1;
+          const id = (await run(
             `INSERT INTO leads (tenant_id, lead_no, name, mobile, email, city, state, loan_type, requested_amount, monthly_income, business_turnover, source, campaign, status, notes)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [t, r.lead_no ?? `LD-${new Date().getFullYear()}-${String(10000 + seq)}`, r.name, str(r.mobile), str(r.email), str(r.city), str(r.state),
              str(r.loan_type), num(r.requested_amount), num(r.monthly_income), num(r.business_turnover),
-             str(r.source) ?? "manual", str(r.campaign), str(r.status) ?? "new", str(r.notes)]).lastId;
+             str(r.source) ?? "manual", str(r.campaign), str(r.status) ?? "new", str(r.notes)])).lastId;
           inserted.push(id);
           break;
         }
         case "los_apps": {
           if (!r.customer_name && !r.customer_id) throw new Error("customer required");
           if (!r.product_name && !r.product_id) throw new Error("product required");
-          const customerId = r.customer_id ? Number(r.customer_id) : (q1<{ id: number }>("SELECT id FROM customers WHERE tenant_id = ? AND name = ?", [t, r.customer_name])?.id);
+          const customerId = r.customer_id ? Number(r.customer_id) : ((await q1<{ id: number }>("SELECT id FROM customers WHERE tenant_id = ? AND name = ?", [t, r.customer_name]))?.id);
           if (!customerId) throw new Error(`Unknown customer: ${r.customer_name}`);
-          const productId = r.product_id ? Number(r.product_id) : (q1<{ id: number }>("SELECT id FROM products WHERE tenant_id = ? AND name = ?", [t, r.product_name])?.id);
+          const productId = r.product_id ? Number(r.product_id) : ((await q1<{ id: number }>("SELECT id FROM products WHERE tenant_id = ? AND name = ?", [t, r.product_name]))?.id);
           if (!productId) throw new Error(`Unknown product: ${r.product_name}`);
-          const seq = (q1<{ n: number }>("SELECT COUNT(*) AS n FROM applications WHERE tenant_id = ?", [t])?.n ?? 0) + i + 1;
-          const id = run(
+          const seq = ((await q1<{ n: number }>("SELECT COUNT(*) AS n FROM applications WHERE tenant_id = ?", [t]))?.n ?? 0) + i + 1;
+          const id = (await run(
             `INSERT INTO applications (tenant_id, application_no, customer_id, product_id, source, requested_amount, tenure, purpose, status, stage)
              VALUES (?, ?, ?, ?, 'import', ?, ?, ?, ?, ?)`,
             [t, r.application_no ?? `APP-${new Date().getFullYear()}-${String(10000 + seq)}`, customerId, productId,
-             num(r.requested_amount) ?? 0, num(r.tenure) ?? 12, str(r.purpose), str(r.status) ?? "draft", str(r.stage) ?? "application"]).lastId;
+             num(r.requested_amount) ?? 0, num(r.tenure) ?? 12, str(r.purpose), str(r.status) ?? "draft", str(r.stage) ?? "application"])).lastId;
           inserted.push(id);
           break;
         }
@@ -683,129 +683,129 @@ gnAdminRouter.post("/gn/import/:entity", requirePerm("gn.*"), asyncH(async (req:
           if (!r.customer_name && !r.customer_id) throw new Error("customer required");
           if (!r.product_name && !r.product_id) throw new Error("product required");
           if (r.principal === undefined || r.principal === "") throw new Error("principal required");
-          const customerId = r.customer_id ? Number(r.customer_id) : (q1<{ id: number }>("SELECT id FROM customers WHERE tenant_id = ? AND name = ?", [t, r.customer_name])?.id);
+          const customerId = r.customer_id ? Number(r.customer_id) : ((await q1<{ id: number }>("SELECT id FROM customers WHERE tenant_id = ? AND name = ?", [t, r.customer_name]))?.id);
           if (!customerId) throw new Error(`Unknown customer: ${r.customer_name}`);
-          const productId = r.product_id ? Number(r.product_id) : (q1<{ id: number }>("SELECT id FROM products WHERE tenant_id = ? AND name = ?", [t, r.product_name])?.id);
+          const productId = r.product_id ? Number(r.product_id) : ((await q1<{ id: number }>("SELECT id FROM products WHERE tenant_id = ? AND name = ?", [t, r.product_name]))?.id);
           if (!productId) throw new Error(`Unknown product: ${r.product_name}`);
           const rate = num(r.rate) ?? 0;
           const tenure = num(r.tenure) ?? 12;
           const principal = num(r.principal) ?? 0;
           const emi = num(r.emi) ?? Math.round((principal * rate / 100 / 12 * Math.pow(1 + rate / 100 / 12, tenure)) / (Math.pow(1 + rate / 100 / 12, tenure) - 1));
-          const seq = (q1<{ n: number }>("SELECT COUNT(*) AS n FROM loans WHERE tenant_id = ?", [t])?.n ?? 0) + i + 1;
-          const id = run(
+          const seq = ((await q1<{ n: number }>("SELECT COUNT(*) AS n FROM loans WHERE tenant_id = ?", [t]))?.n ?? 0) + i + 1;
+          const id = (await run(
             `INSERT INTO loans (tenant_id, loan_no, customer_id, product_id, principal, rate, tenure, emi, disbursed_at, first_emi_at, status, outstanding)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [t, r.loan_no ?? `LN-${new Date().getFullYear()}-${String(10000 + seq)}`, customerId, productId, principal, rate ?? 0, tenure, emi,
-             str(r.disbursed_at) ?? new Date().toISOString().slice(0, 10), str(r.first_emi_at), str(r.status) ?? "active", num(r.outstanding) ?? principal]).lastId;
+             str(r.disbursed_at) ?? new Date().toISOString().slice(0, 10), str(r.first_emi_at), str(r.status) ?? "active", num(r.outstanding) ?? principal])).lastId;
           inserted.push(id);
           break;
         }
         case "payments": {
           if (!r.loan_no && !r.loan_id) throw new Error("loan required");
           if (r.amount === undefined || r.amount === "") throw new Error("amount required");
-          const loan = r.loan_id ? q1<{ id: number; customer_id: number; loan_no: string }>("SELECT id, customer_id, loan_no FROM loans WHERE id = ? AND tenant_id = ?", [Number(r.loan_id), t])
-            : q1<{ id: number; customer_id: number; loan_no: string }>("SELECT id, customer_id, loan_no FROM loans WHERE loan_no = ? AND tenant_id = ?", [r.loan_no, t]);
+          const loan = r.loan_id ? await q1<{ id: number; customer_id: number; loan_no: string }>("SELECT id, customer_id, loan_no FROM loans WHERE id = ? AND tenant_id = ?", [Number(r.loan_id), t])
+            : await q1<{ id: number; customer_id: number; loan_no: string }>("SELECT id, customer_id, loan_no FROM loans WHERE loan_no = ? AND tenant_id = ?", [r.loan_no, t]);
           if (!loan) throw new Error(`Unknown loan: ${r.loan_no ?? r.loan_id}`);
-          const seq = (q1<{ n: number }>("SELECT COUNT(*) AS n FROM payments WHERE tenant_id = ?", [t])?.n ?? 0) + i + 1;
-          const id = run(
+          const seq = ((await q1<{ n: number }>("SELECT COUNT(*) AS n FROM payments WHERE tenant_id = ?", [t]))?.n ?? 0) + i + 1;
+          const id = (await run(
             `INSERT INTO payments (tenant_id, loan_id, customer_id, receipt_no, amount, mode, reference, status, received_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [t, loan.id, loan.customer_id, r.receipt_no ?? `RCPT-${new Date().getFullYear()}-${String(10000 + seq)}`, num(r.amount) ?? 0,
-             str(r.mode) ?? "cash", str(r.reference), str(r.status) ?? "received", str(r.received_at) ?? str(r.date) ?? new Date().toISOString().slice(0, 10)]).lastId;
+             str(r.mode) ?? "cash", str(r.reference), str(r.status) ?? "received", str(r.received_at) ?? str(r.date) ?? new Date().toISOString().slice(0, 10)])).lastId;
           inserted.push(id);
           break;
         }
         case "collections": {
           if (!r.loan_no && !r.loan_id) throw new Error("loan required");
-          const loan = r.loan_id ? q1<{ id: number; customer_id: number }>("SELECT id, customer_id FROM loans WHERE id = ? AND tenant_id = ?", [Number(r.loan_id), t])
-            : q1<{ id: number; customer_id: number }>("SELECT id, customer_id FROM loans WHERE loan_no = ? AND tenant_id = ?", [r.loan_no, t]);
+          const loan = r.loan_id ? await q1<{ id: number; customer_id: number }>("SELECT id, customer_id FROM loans WHERE id = ? AND tenant_id = ?", [Number(r.loan_id), t])
+            : await q1<{ id: number; customer_id: number }>("SELECT id, customer_id FROM loans WHERE loan_no = ? AND tenant_id = ?", [r.loan_no, t]);
           if (!loan) throw new Error(`Unknown loan: ${r.loan_no ?? r.loan_id}`);
-          const id = run(
+          const id = (await run(
             `INSERT INTO collection_tasks (tenant_id, loan_id, customer_id, agent_id, priority, kind, note, due_at, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [t, loan.id, loan.customer_id, r.agent_id ? Number(r.agent_id) : null, str(r.priority) ?? "high", str(r.kind) ?? "call", str(r.note),
-             str(r.due_at) ?? str(r.followup_at), str(r.status) ?? "open"]).lastId;
+             str(r.due_at) ?? str(r.followup_at), str(r.status) ?? "open"])).lastId;
           inserted.push(id);
           break;
         }
         case "documents": {
           if (!r.category) throw new Error("category required");
-          const customerId = r.customer_name ? (q1<{ id: number }>("SELECT id FROM customers WHERE tenant_id = ? AND name = ?", [t, r.customer_name])?.id) : (r.customer_id ? Number(r.customer_id) : null);
+          const customerId = r.customer_name ? ((await q1<{ id: number }>("SELECT id FROM customers WHERE tenant_id = ? AND name = ?", [t, r.customer_name]))?.id) : (r.customer_id ? Number(r.customer_id) : null);
           const appId = r.application_id ? Number(r.application_id) : null;
-          const id = run(
+          const id = (await run(
             `INSERT INTO documents (tenant_id, customer_id, application_id, category, name, file_path, status, verified_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [t, customerId, appId, r.category, str(r.name) ?? r.category, str(r.file_path), str(r.status) ?? "uploaded", str(r.verified_at)]).lastId;
+            [t, customerId, appId, r.category, str(r.name) ?? r.category, str(r.file_path), str(r.status) ?? "uploaded", str(r.verified_at)])).lastId;
           inserted.push(id);
           break;
         }
         case "workflows": {
           if (!r.name) throw new Error("name required");
-          const id = run("INSERT INTO gn_workflows (tenant_id, name, trigger, route, actions, status) VALUES (?, ?, ?, ?, ?, ?)",
-            [t, r.name, str(r.trigger) ?? "lead_captured", str(r.route) ?? "score_round_robin", str(r.actions) ?? "[]", str(r.status) ?? "draft"]).lastId;
+          const id = (await run("INSERT INTO gn_workflows (tenant_id, name, trigger, route, actions, status) VALUES (?, ?, ?, ?, ?, ?)",
+            [t, r.name, str(r.trigger) ?? "lead_captured", str(r.route) ?? "score_round_robin", str(r.actions) ?? "[]", str(r.status) ?? "draft"])).lastId;
           inserted.push(id);
           break;
         }
         case "ivr_menus": {
           if (!r.name) throw new Error("name required");
-          const id = run("INSERT INTO gn_ivr_menus (tenant_id, name, greeting, menu_options, fallback, status) VALUES (?, ?, ?, ?, ?, ?)",
-            [t, r.name, str(r.greeting), str(r.menu_options) ?? "[]", str(r.fallback) ?? "Telecalling", str(r.status) ?? "active"]).lastId;
+          const id = (await run("INSERT INTO gn_ivr_menus (tenant_id, name, greeting, menu_options, fallback, status) VALUES (?, ?, ?, ?, ?, ?)",
+            [t, r.name, str(r.greeting), str(r.menu_options) ?? "[]", str(r.fallback) ?? "Telecalling", str(r.status) ?? "active"])).lastId;
           inserted.push(id);
           break;
         }
         case "call_logs": {
           if (!r.call_id) throw new Error("call_id required");
-          const id = run("INSERT INTO gn_call_logs (tenant_id, call_id, caller, ivr_menu_id, route, outcome, duration_sec, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [t, r.call_id, str(r.caller), r.ivr_menu_id ? Number(r.ivr_menu_id) : null, str(r.route) ?? "telecalling", str(r.outcome) ?? "connected", num(r.duration_sec) ?? 0, str(r.notes)]).lastId;
+          const id = (await run("INSERT INTO gn_call_logs (tenant_id, call_id, caller, ivr_menu_id, route, outcome, duration_sec, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [t, r.call_id, str(r.caller), r.ivr_menu_id ? Number(r.ivr_menu_id) : null, str(r.route) ?? "telecalling", str(r.outcome) ?? "connected", num(r.duration_sec) ?? 0, str(r.notes)])).lastId;
           inserted.push(id);
           break;
         }
         case "templates": {
           if (!r.name || !r.body) throw new Error("name + body required");
-          const id = run("INSERT INTO gn_message_templates (tenant_id, name, category, purpose, body, variables, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [t, r.name, str(r.category) ?? "whatsapp", str(r.purpose) ?? "promotional", r.body, str(r.variables) ?? "[]", str(r.status) ?? "approved"]).lastId;
+          const id = (await run("INSERT INTO gn_message_templates (tenant_id, name, category, purpose, body, variables, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [t, r.name, str(r.category) ?? "whatsapp", str(r.purpose) ?? "promotional", r.body, str(r.variables) ?? "[]", str(r.status) ?? "approved"])).lastId;
           inserted.push(id);
           break;
         }
         case "drips": {
           if (!r.name) throw new Error("name required");
-          const id = run("INSERT INTO gn_whatsapp_drips (tenant_id, name, trigger, audience, template_id, schedule, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [t, r.name, str(r.trigger) ?? "lead_captured", str(r.audience) ?? "all_leads", r.template_id ? Number(r.template_id) : null, str(r.schedule) ?? "immediate", str(r.status) ?? "active"]).lastId;
+          const id = (await run("INSERT INTO gn_whatsapp_drips (tenant_id, name, trigger, audience, template_id, schedule, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [t, r.name, str(r.trigger) ?? "lead_captured", str(r.audience) ?? "all_leads", r.template_id ? Number(r.template_id) : null, str(r.schedule) ?? "immediate", str(r.status) ?? "active"])).lastId;
           inserted.push(id);
           break;
         }
         case "inbox": {
           if (!r.body) throw new Error("body required");
-          const id = run("INSERT INTO gn_inbox_messages (tenant_id, direction, channel, from_contact, to_contact, subject, body, related_type, related_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [t, str(r.direction) ?? "in", str(r.channel) ?? "whatsapp", str(r.from_contact), str(r.to_contact), str(r.subject), r.body, str(r.related_type), r.related_id ? Number(r.related_id) : null, str(r.status) ?? "unread"]).lastId;
+          const id = (await run("INSERT INTO gn_inbox_messages (tenant_id, direction, channel, from_contact, to_contact, subject, body, related_type, related_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [t, str(r.direction) ?? "in", str(r.channel) ?? "whatsapp", str(r.from_contact), str(r.to_contact), str(r.subject), r.body, str(r.related_type), r.related_id ? Number(r.related_id) : null, str(r.status) ?? "unread"])).lastId;
           inserted.push(id);
           break;
         }
         case "docs": {
           if (!r.title) throw new Error("title required");
-          const id = run("INSERT INTO gn_docs (tenant_id, title, slug, category, content) VALUES (?, ?, ?, ?, ?)",
-            [t, r.title, str(r.slug), str(r.category) ?? "Getting Started", str(r.content) ?? ""]).lastId;
+          const id = (await run("INSERT INTO gn_docs (tenant_id, title, slug, category, content) VALUES (?, ?, ?, ?, ?)",
+            [t, r.title, str(r.slug), str(r.category) ?? "Getting Started", str(r.content) ?? ""])).lastId;
           inserted.push(id);
           break;
         }
         case "faqs": {
           if (!r.question || !r.answer) throw new Error("question + answer required");
-          const id = run("INSERT INTO gn_faqs (tenant_id, question, answer, category) VALUES (?, ?, ?, ?)",
-            [t, r.question, r.answer, str(r.category) ?? "General"]).lastId;
+          const id = (await run("INSERT INTO gn_faqs (tenant_id, question, answer, category) VALUES (?, ?, ?, ?)",
+            [t, r.question, r.answer, str(r.category) ?? "General"])).lastId;
           inserted.push(id);
           break;
         }
         case "tickets": {
           if (!r.subject) throw new Error("subject required");
-          const id = run("INSERT INTO gn_support_tickets (tenant_id, subject, message, priority, status, category) VALUES (?, ?, ?, ?, ?, ?)",
-            [t, r.subject, str(r.message) ?? "", str(r.priority) ?? "medium", str(r.status) ?? "open", str(r.category) ?? "Bug"]).lastId;
+          const id = (await run("INSERT INTO gn_support_tickets (tenant_id, subject, message, priority, status, category) VALUES (?, ?, ?, ?, ?, ?)",
+            [t, r.subject, str(r.message) ?? "", str(r.priority) ?? "medium", str(r.status) ?? "open", str(r.category) ?? "Bug"])).lastId;
           inserted.push(id);
           break;
         }
         case "changelog": {
           if (!r.version || !r.title) throw new Error("version + title required");
-          const id = run("INSERT INTO gn_changelog (tenant_id, version, title, content, category) VALUES (?, ?, ?, ?, ?)",
-            [t, r.version, r.title, str(r.content) ?? "", str(r.category) ?? "feature"]).lastId;
+          const id = (await run("INSERT INTO gn_changelog (tenant_id, version, title, content, category) VALUES (?, ?, ?, ?, ?)",
+            [t, r.version, r.title, str(r.content) ?? "", str(r.category) ?? "feature"])).lastId;
           inserted.push(id);
           break;
         }
@@ -815,8 +815,8 @@ gnAdminRouter.post("/gn/import/:entity", requirePerm("gn.*"), asyncH(async (req:
     } catch (e) {
       errors.push({ row: i + 1, error: (e as Error).message });
     }
-  });
-  audit({ tenantId: t, userId: req.user!.id, action: `gn.import.${entity}`, entityType: "gn_import", after: { entity, inserted: inserted.length, errors: errors.length }, ip: clientIp(req) });
+  }
+  await audit({ tenantId: t, userId: req.user!.id, action: `gn.import.${entity}`, entityType: "gn_import", after: { entity, inserted: inserted.length, errors: errors.length }, ip: clientIp(req) });
   res.json({ ok: true, entity, inserted: inserted.length, errors });
 }));
 
@@ -869,7 +869,7 @@ function parseCsv(text: string): Record<string, any>[] {
 }
 
 /** Insert a scheme from a flat row (CSV/Excel/JSON column names are normalized). Returns the new scheme id or throws. */
-function importSchemeRow(t: number, raw: Record<string, any>, lenderByName: Map<string, number>, source: string): number {
+async function importSchemeRow(t: number, raw: Record<string, any>, lenderByName: Map<string, number>, source: string) {
   const r: Record<string, any> = {};
   for (const k of Object.keys(raw)) r[k.toLowerCase().replace(/[^a-z0-9_]/g, "_")] = raw[k];
   const num = (v: any) => (v === "" || v === null || v === undefined ? null : Number(String(v).replace(/[₹,\s]/g, "")));
@@ -926,9 +926,9 @@ function importSchemeRow(t: number, raw: Record<string, any>, lenderByName: Map<
   };
   const clean = (o: Record<string, any>) => { const out: Record<string, any> = {}; for (const k of Object.keys(o)) if (o[k] !== undefined && o[k] !== null && o[k] !== "") out[k] = o[k]; return out; };
   const rate = num(r.rate) ?? 0;
-  const productByName = new Map((q<{ id: number; name: string }>("SELECT id, name FROM gn_products WHERE tenant_id = ?", [t]) ?? []).map((x) => [x.name, x.id]));
+  const productByName = new Map((await q<{ id: number; name: string }>("SELECT id, name FROM gn_products WHERE tenant_id = ?", [t]) ?? []).map((x) => [x.name, x.id]));
   const productId = r.product_id ? Number(r.product_id) : (r.product_name ? productByName.get(r.product_name) : null);
-  return run(
+  return (await run(
     `INSERT INTO gn_schemes (tenant_id, lender_id, product_id, name, payout_type, rate, flat_amount, slabs, effective_from, effective_to, status, profile, states, loan_params, eligibility, programs, purposes, usp, commission_pct, policy, source, notes, banker_name, banker_email, banker_phone, branch, sub_product)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [t, lenderId, productId, r.name, str(r.payout_type) ?? "percent", rate, num(r.flat_amount) ?? 0, JSON.stringify([]),
@@ -937,7 +937,7 @@ function importSchemeRow(t: number, raw: Record<string, any>, lenderByName: Map<
      JSON.stringify(list(r.programs)), JSON.stringify(list(r.purposes)), str(r.usp),
      num(r.commission_pct) ?? num(r.commission) ?? rate, JSON.stringify(clean(policy)), source, str(r.notes),
      str(r.banker_name), str(r.banker_email), str(r.banker_phone), str(r.branch), str(r.sub_product)]
-  ).lastId;
+  )).lastId;
 }
 
 /** Import scheme rows OR store a scheme document — accepts CSV, TSV, JSON, Excel (.xlsx/.xls), PDF, images and any other document format. */
@@ -946,7 +946,7 @@ gnAdminRouter.post("/gn/import/schemes/file", requirePerm("gn.*"), asyncH(async 
   const b = z.object({ filename: z.string().min(1), mime: z.string().optional(), data: z.string() }).parse(req.body);
   const buf = Buffer.from(b.data, "base64");
   const ext = (b.filename.split(".").pop() || "").toLowerCase();
-  const lenderByName = new Map((q<{ id: number; name: string }>("SELECT id, name FROM gn_lenders WHERE tenant_id = ?", [t]) ?? []).map((r) => [r.name, r.id]));
+  const lenderByName = new Map((await q<{ id: number; name: string }>("SELECT id, name FROM gn_lenders WHERE tenant_id = ?", [t]) ?? []).map((r) => [r.name, r.id]));
   const inserted: number[] = [];
   const errors: { row: number; error: string }[] = [];
   let format = ext;
@@ -956,31 +956,31 @@ gnAdminRouter.post("/gn/import/schemes/file", requirePerm("gn.*"), asyncH(async 
     if (["csv", "tsv"].includes(ext)) {
       const text = buf.toString("utf8").replace(/^\uFEFF/, "");
       const rows = parseCsv(ext === "tsv" ? text.replace(/\t/g, ",") : text);
-      rows.forEach((row, i) => {
-        try { inserted.push(importSchemeRow(t, row, lenderByName, `import:${ext}`)); }
+      for (const [i, row] of rows.entries()) {
+        try { inserted.push(await importSchemeRow(t, row, lenderByName, `import:${ext}`)); }
         catch (e) { errors.push({ row: i + 1, error: (e as Error).message }); }
-      });
+      }
     } else if (ext === "json") {
       const parsed = JSON.parse(buf.toString("utf8"));
       const rows: Record<string, any>[] = Array.isArray(parsed) ? parsed : (parsed.rows ?? []);
-      rows.forEach((row, i) => {
-        try { inserted.push(importSchemeRow(t, row, lenderByName, "import:json")); }
+      for (const [i, row] of rows.entries()) {
+        try { inserted.push(await importSchemeRow(t, row, lenderByName, "import:json")); }
         catch (e) { errors.push({ row: i + 1, error: (e as Error).message }); }
-      });
+      }
     } else if (["xlsx", "xls"].includes(ext)) {
       const wb = XLSX.read(buf, { type: "buffer" });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
-      rows.forEach((row, i) => {
-        try { inserted.push(importSchemeRow(t, row, lenderByName, "import:xlsx")); }
+      for (const [i, row] of rows.entries()) {
+        try { inserted.push(await importSchemeRow(t, row, lenderByName, "import:xlsx")); }
         catch (e) { errors.push({ row: i + 1, error: (e as Error).message }); }
-      });
+      }
     } else {
       // PDF / images / any other document — stored as a scheme document for manual review
       pending = true;
       format = "document";
       notes = "Document stored — automatic text extraction is not available for this format in the demo. Review it and add the scheme via the form.";
-      run(
+      await run(
         "INSERT INTO gn_scheme_files (tenant_id, kind, filename, mime, size, content, status, notes) VALUES (?, 'scheme_document', ?, ?, ?, ?, 'pending_review', ?)",
         [t, b.filename, b.mime || "application/octet-stream", buf.length, b.data, notes]
       );
@@ -988,8 +988,8 @@ gnAdminRouter.post("/gn/import/schemes/file", requirePerm("gn.*"), asyncH(async 
   } catch (e) {
     return void res.status(400).json({ error: (e as Error).message });
   }
-  const attachment = q1<{ id: number }>("SELECT id FROM gn_scheme_files WHERE tenant_id = ? ORDER BY id DESC LIMIT 1", [t])?.id ?? null;
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.scheme.import_file", entityType: "gn_scheme_import", after: { filename: b.filename, format, inserted: inserted.length, errors: errors.length, pending }, ip: clientIp(req) });
+  const attachment = (await q1<{ id: number }>("SELECT id FROM gn_scheme_files WHERE tenant_id = ? ORDER BY id DESC LIMIT 1", [t]))?.id ?? null;
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.scheme.import_file", entityType: "gn_scheme_import", after: { filename: b.filename, format, inserted: inserted.length, errors: errors.length, pending }, ip: clientIp(req) });
   res.json({ ok: true, format, filename: b.filename, inserted: inserted.length, errors, pending, attachment, notes });
 }));
 

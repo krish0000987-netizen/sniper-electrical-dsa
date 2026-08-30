@@ -55,7 +55,7 @@ export const DemoModal: React.FC<DemoModalProps> = ({ isOpen, type, onClose }) =
               <div>
                 <h3 className="font-extrabold text-lg text-white">
                   {type === 'demo' && 'Schedule Executive Private Demo'}
-                  {type === 'tour' && 'NEXUS Lending OS Product Tour'}
+                  {type === 'tour' && 'SNIPER Lending OS Product Tour'}
                   {type === 'live' && 'Instant Sandbox Exploration'}
                 </h3>
                 <p className="text-xs text-slate-400">
@@ -123,7 +123,7 @@ export const DemoModal: React.FC<DemoModalProps> = ({ isOpen, type, onClose }) =
                   </div>
                   <h4 className="text-2xl font-bold text-white">Demo Request Confirmed!</h4>
                   <p className="text-slate-300 text-sm max-w-md mx-auto">
-                    Thank you, {formData.name}. Our Solutions Engineering team will reach out within 2 hours to schedule your customized NEXUS walkthrough.
+                    Thank you, {formData.name}. Our Solutions Engineering team will reach out within 2 hours to schedule your customized SNIPER walkthrough.
                   </p>
                   <button
                     onClick={onClose}

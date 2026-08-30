@@ -247,7 +247,7 @@ export default function ApplicationWorkspace() {
           </Card>
 
           <Card>
-            <CardTitle title="NEXUS AI assistant" right={<Bot size={14} className="text-brand-500" />} />
+            <CardTitle title="SNIPER AI assistant" right={<Bot size={14} className="text-brand-500" />} />
             <div className="text-[11.5px] text-zinc-600 leading-relaxed space-y-2">
               <p><span className="font-semibold text-zinc-800">Application summary:</span> {app.customer_name} requests {fmtInr(app.requested_amount)} for {app.purpose || "unspecified purpose"} over {app.tenure || "—"} months.</p>
               {capacity?.foir != null && <p><span className="font-semibold text-zinc-800">Capacity:</span> FOIR {capacity.foir}% with {fmtInr(capacity.surplus)} surplus after {fmtInr(capacity.obligations)} obligations.</p>}
@@ -350,7 +350,7 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone: 
 function BureauReport({ bureau }: { bureau: any }) {
   return (
     <Card>
-      <CardTitle title="NEXUS Credit Insight" sub={`${bureau.provider} · fetched ${fmtDate(bureau.fetched_at)}`} right={<Badge status="sandbox">SANDBOX</Badge>} />
+      <CardTitle title="SNIPER Credit Insight" sub={`${bureau.provider} · fetched ${fmtDate(bureau.fetched_at)}`} right={<Badge status="sandbox">SANDBOX</Badge>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <div className="rounded-lg border border-zinc-100 p-3 text-center">
           <div className={`text-[26px] font-bold num ${bureau.score >= 750 ? "text-emerald-600" : bureau.score >= 650 ? "text-amber-600" : "text-rose-600"}`}>{bureau.score}</div>

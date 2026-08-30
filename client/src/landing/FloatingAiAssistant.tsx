@@ -16,7 +16,7 @@ export const FloatingAiAssistant: React.FC<FloatingAiAssistantProps> = ({ onSele
         className="fixed bottom-6 right-6 z-40 bg-slate-900 hover:bg-blue-600 text-white p-3.5 rounded-full shadow-2xl border border-slate-700 flex items-center gap-2 cursor-pointer transition-all hover:scale-105 group"
       >
         <Sparkles className="w-5 h-5 text-blue-400 group-hover:text-white" />
-        <span className="text-xs font-bold pr-1">NEXUS AI Copilot</span>
+        <span className="text-xs font-bold pr-1">SNIPER AI Copilot</span>
         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
       </button>
     );
@@ -34,7 +34,7 @@ export const FloatingAiAssistant: React.FC<FloatingAiAssistantProps> = ({ onSele
             </div>
             <div>
               <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                <span>NEXUS AI Copilot</span>
+                <span>SNIPER AI Copilot</span>
                 <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.2 rounded font-mono">
                   ACTIVE
                 </span>
@@ -100,9 +100,9 @@ export const FloatingAiAssistant: React.FC<FloatingAiAssistantProps> = ({ onSele
             <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
               <span className="flex items-center gap-1">
                 <Zap className="w-3 h-3 text-emerald-400" />
-                <span>Powered by NEXUS GenAI v4</span>
+                <span>Powered by SNIPER GenAI v4</span>
               </span>
-              <a href="#nexus-ai" className="text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1">
+              <a href="#sniper-ai" className="text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1">
                 Full AI Console
                 <ExternalLink className="w-3 h-3" />
               </a>

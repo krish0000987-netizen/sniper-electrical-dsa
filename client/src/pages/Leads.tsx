@@ -110,7 +110,7 @@ export default function Leads() {
           searchPlaceholder="Search by name, mobile, lead ID…"
           onSearch={(v) => { setQ(v); setPage(1); }}
           onRowClick={(r) => nav(`/leads/${r.id}`)}
-          exportName="nexus-leads"
+          exportName="sniper-leads"
         />
       </Card>
 

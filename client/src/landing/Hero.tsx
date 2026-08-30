@@ -129,7 +129,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBookDemo, onOpenTour, onOpenLi
               <div className="w-6 h-6 rounded-lg bg-blue-600 flex items-center justify-center font-black text-white text-xs shadow-md shadow-blue-600/50">
                 N
               </div>
-              <span className="font-extrabold text-white tracking-widest text-sm">NEXUS</span>
+              <span className="font-extrabold text-white tracking-widest text-sm">SNIPER</span>
             </div>
 
             <span className="text-slate-700">|</span>
@@ -267,7 +267,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBookDemo, onOpenTour, onOpenLi
             {/* High Quality Business & Financial Tech Image */}
             <img 
               src="https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=1600&q=80" 
-              alt="NEXUS Lending Operating System Dashboard" 
+              alt="SNIPER Lending Operating System Dashboard" 
               className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-1000"
               referrerPolicy="no-referrer"
             />

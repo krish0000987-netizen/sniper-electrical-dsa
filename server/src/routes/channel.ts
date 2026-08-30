@@ -35,8 +35,8 @@ channelRouter.get("/channel/dsa", requirePerm("leads.view"), asyncH(async (req: 
   const u = req.user!;
   const ownWhere = "dsa_id = ? OR owner_id = ?";
   const base: unknown[] = [u.tenant_id, u.id, u.id];
-  const leads = q<Record<string, any>>(`SELECT * FROM leads WHERE tenant_id = ? AND (${ownWhere}) ORDER BY id DESC LIMIT 100`, base);
-  const appRows = q<Record<string, any>>(
+  const leads = await q<Record<string, any>>(`SELECT * FROM leads WHERE tenant_id = ? AND (${ownWhere}) ORDER BY id DESC LIMIT 100`, base);
+  const appRows = await q<Record<string, any>>(
     `SELECT a.*, p.name AS product_name FROM applications a JOIN products p ON p.id = a.product_id
      WHERE a.tenant_id = ? AND (a.dsa_id = ? OR a.sales_officer_id = ?) ORDER BY a.id DESC LIMIT 100`,
     [u.tenant_id, u.id, u.id]);
@@ -70,18 +70,18 @@ channelRouter.get("/channel/dsa", requirePerm("leads.view"), asyncH(async (req: 
 channelRouter.get("/channel/field", requirePerm("leads.view"), asyncH(async (req: AuthedRequest, res) => {
   if (!requireChannelRole(req, res)) return;
   const u = req.user!;
-  const leads = q<Record<string, any>>(
+  const leads = await q<Record<string, any>>(
     `SELECT l.*, b.name AS branch_name FROM leads l LEFT JOIN branches b ON b.id = l.branch_id
      WHERE l.tenant_id = ? AND (l.owner_id = ? OR l.dsa_id = ?) ORDER BY l.id DESC LIMIT 200`,
     [u.tenant_id, u.id, u.id]);
   const todayLeads = leads.filter((l) => l.created_at?.slice(0, 10) === today());
-  const activities = q<Record<string, any>>(
+  const activities = await q<Record<string, any>>(
     `SELECT la.*, l.lead_no, l.name AS lead_name FROM lead_activities la JOIN leads l ON l.id = la.lead_id
      WHERE la.user_id = ? ORDER BY la.id DESC LIMIT 100`, [u.id]);
   const visits = activities.filter((a) => a.kind === "visit");
   const calls = activities.filter((a) => a.kind === "call");
   const followups = leads.filter((l) => l.followup_at && l.followup_at <= today());
-  const apps = q<Record<string, any>>(
+  const apps = await q<Record<string, any>>(
     `SELECT a.application_no, a.status, a.stage, a.decision, a.created_at FROM applications a
      WHERE a.tenant_id = ? AND a.sales_officer_id = ? ORDER BY a.id DESC LIMIT 50`, [u.tenant_id, u.id]);
   const target = 5; // daily lead target — configurable in admin later
@@ -110,7 +110,7 @@ channelRouter.get("/channel/field", requirePerm("leads.view"), asyncH(async (req
 channelRouter.get("/channel/my-leads", requirePerm("leads.view"), asyncH(async (req: AuthedRequest, res) => {
   if (!requireChannelRole(req, res)) return;
   const u = req.user!;
-  const rows = q<Record<string, any>>(
+  const rows = await q<Record<string, any>>(
     `SELECT l.*, b.name AS branch_name FROM leads l LEFT JOIN branches b ON b.id = l.branch_id
      WHERE l.tenant_id = ? AND (l.owner_id = ? OR l.dsa_id = ?) ORDER BY l.id DESC LIMIT 100`,
     [u.tenant_id, u.id, u.id]);
@@ -126,15 +126,15 @@ channelRouter.post("/channel/leads", requirePerm("leads.create"), asyncH(async (
   }).parse(req.body);
   const u = req.user!;
   const leadNo = "LD" + String(1000 + Math.floor(Math.random() * 8999)) + String(Math.floor(1000 + Math.random() * 8999));
-  const id = run(
+  const id = (await run(
     `INSERT INTO leads (tenant_id, branch_id, lead_no, name, mobile, email, city, loan_type, requested_amount, source,
        dsa_id, owner_id, status, score, probability, next_action, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', 0, 0, 'Assign & follow up', datetime('now'))`,
     [u.tenant_id, u.branch_id, leadNo, body.name, body.mobile, body.email ?? null, body.city ?? null,
      body.loan_type ?? "personal", body.requested_amount ?? null, body.source ?? "channel",
      u.role === "dsa" ? u.id : null, u.role === "dsa" ? null : u.id]
-  ).lastId;
-  audit({ tenantId: u.tenant_id, userId: u.id, action: "channel.lead_create", entityType: "lead", entityId: id, after: body, ip: clientIp(req) });
+  )).lastId;
+  await audit({ tenantId: u.tenant_id, userId: u.id, action: "channel.lead_create", entityType: "lead", entityId: id, after: body, ip: clientIp(req) });
   res.json({ id, lead_no: leadNo });
 }));
 
@@ -143,12 +143,12 @@ channelRouter.post("/channel/leads", requirePerm("leads.create"), asyncH(async (
 channelRouter.get("/channel/telecall", requirePerm("leads.view"), asyncH(async (req: AuthedRequest, res) => {
   if (!requireChannelRole(req, res)) return;
   const u = req.user!;
-  const rows = q<Record<string, any>>(
+  const rows = await q<Record<string, any>>(
     `SELECT l.id, l.lead_no, l.name, l.mobile, l.city, l.loan_type, l.requested_amount, l.status, l.followup_at, l.score
      FROM leads l WHERE l.tenant_id = ? AND (l.owner_id = ? OR l.status IN ('new','assigned'))
      ORDER BY CASE l.status WHEN 'new' THEN 0 WHEN 'assigned' THEN 1 ELSE 2 END, l.followup_at NULLS LAST LIMIT 50`,
     [u.tenant_id, u.id]);
-  const doneToday = q1<{ n: number }>(
+  const doneToday = await q1<{ n: number }>(
     `SELECT COUNT(*) AS n FROM lead_activities WHERE user_id = ? AND date(created_at) = date('now')`, [u.id]);
   res.json({ rows, done_today: doneToday?.n ?? 0 });
 }));

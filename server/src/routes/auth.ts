@@ -14,7 +14,7 @@ const loginSchema = z.object({
 
 authRouter.post("/login", asyncH(async (req, res) => {
   const body = loginSchema.parse(req.body);
-  const user = q1<Record<string, any>>("SELECT * FROM users WHERE email = ?", [body.email.toLowerCase().trim()]);
+  const user = await q1<Record<string, any>>("SELECT * FROM users WHERE email = ?", [body.email.toLowerCase().trim()]);
   if (!user || !verifyPassword(body.password, user.password_hash)) {
     res.status(401).json({ error: "Invalid email or password" });
     return;
@@ -24,8 +24,8 @@ authRouter.post("/login", asyncH(async (req, res) => {
     return;
   }
   const token = createSession(user.id);
-  run("UPDATE users SET last_login_at = datetime('now') WHERE id = ?", [user.id]);
-  audit({ tenantId: user.tenant_id, userId: user.id, action: "auth.login", ip: clientIp(req) });
+  await run("UPDATE users SET last_login_at = datetime('now') WHERE id = ?", [user.id]);
+  await audit({ tenantId: user.tenant_id, userId: user.id, action: "auth.login", ip: clientIp(req) });
   res.json({
     token,
     user: {
@@ -38,7 +38,7 @@ authRouter.post("/login", asyncH(async (req, res) => {
 authRouter.post("/logout", authRequired, asyncH(async (req: AuthedRequest, res) => {
   const token = (req.headers.authorization || "").replace("Bearer ", "");
   destroySession(token);
-  audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "auth.logout", ip: clientIp(req) });
+  await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "auth.logout", ip: clientIp(req) });
   res.json({ ok: true });
 }));
 
@@ -56,15 +56,15 @@ authRouter.post("/users", asyncH(async (req, res) => {
     phone: z.string().optional()
   }).parse(req.body);
   const tenantId = 1;
-  const id = run(
+  const id = (await run(
     "INSERT INTO users (tenant_id, branch_id, name, email, password_hash, role, phone) VALUES (?, ?, ?, ?, ?, ?, ?)",
     [tenantId, body.branch_id ?? null, body.name, body.email.toLowerCase(), hashPassword(body.password), body.role, body.phone ?? null]
-  ).lastId;
+  )).lastId;
   res.json({ id });
 }));
 
 // Bootstrap: seed demo user accounts (idempotent)
-export function ensureDemoUsers() {
+export async function ensureDemoUsers() {
   const demos = [
     { email: "admin@nexus.demo", name: "Aarav Mehta", role: "super_admin", branch: null },
     { email: "credit@nexus.demo", name: "Priya Nair", role: "credit_manager", branch: 2 },
@@ -82,18 +82,18 @@ export function ensureDemoUsers() {
     { email: "finance@nexus.demo", name: "Ritu Finance", role: "finance", branch: 1 }
   ];
   for (const d of demos) {
-    const existing = q1("SELECT id FROM users WHERE email = ?", [d.email]);
+    const existing = await q1("SELECT id FROM users WHERE email = ?", [d.email]);
     if (existing) continue;
-    run(
+    await run(
       "INSERT INTO users (tenant_id, branch_id, name, email, password_hash, role) VALUES (1, ?, ?, ?, ?, ?)",
       [d.branch, d.name, d.email, hashPassword("demo1234"), d.role]
     );
   }
   // Link the portal customer account to its customer profile if it exists
-  const portalUser = q1<Record<string, any>>("SELECT id, customer_id FROM users WHERE email = 'customer@nexus.demo'");
+  const portalUser = await q1<Record<string, any>>("SELECT id, customer_id FROM users WHERE email = 'customer@nexus.demo'");
   if (portalUser && !portalUser.customer_id) {
-    const portalCust = q1<{ id: number }>("SELECT id FROM customers WHERE customer_no = 'CUS10000'");
-    if (portalCust) run("UPDATE users SET customer_id = ? WHERE id = ?", [portalCust.id, portalUser.id]);
+    const portalCust = await q1<{ id: number }>("SELECT id FROM customers WHERE customer_no = 'CUS10000'");
+    if (portalCust) await run("UPDATE users SET customer_id = ? WHERE id = ?", [portalCust.id, portalUser.id]);
   }
 }
 

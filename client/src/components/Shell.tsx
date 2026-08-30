@@ -92,7 +92,7 @@ const NAV: NavGroup[] = [
     section: "Intelligence", items: [
       { to: "/reports", label: "Reports", icon: BarChart3 },
       { to: "/risk", label: "Risk Analytics", icon: Activity },
-      { to: "/ai", label: "NEXUS AI", icon: BrainCircuit }
+      { to: "/ai", label: "SNIPER AI", icon: BrainCircuit }
     ]
   },
   {
@@ -181,7 +181,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="h-14 flex items-center gap-2.5 px-4 border-b border-zinc-100">
           <div className="w-7 h-7 rounded-md bg-brand-600 flex items-center justify-center text-white font-bold text-[13px] tracking-tight shadow-sm">N</div>
           <div>
-            <div className="text-[14px] font-bold tracking-tight text-zinc-900 leading-none">NEXUS</div>
+            <div className="text-[14px] font-bold tracking-tight text-zinc-900 leading-none">SNIPER</div>
             <div className="text-[9.5px] font-medium text-zinc-400 uppercase tracking-[0.08em] mt-0.5">Lending OS</div>
           </div>
         </div>
@@ -230,7 +230,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <div className="flex-1" />
           <button onClick={() => setSearchOpen(true)} className="flex items-center gap-2 text-[12px] text-zinc-400 bg-zinc-50 border border-zinc-200 rounded-md px-2.5 py-1.5 hover:border-zinc-300 cursor-pointer">
             <Search size={13} />
-            <span className="hidden md:inline">Search NEXUS…</span>
+            <span className="hidden md:inline">Search SNIPER…</span>
             <span className="hidden md:flex items-center gap-0.5 text-[10px] text-zinc-400"><span className="bg-white border border-zinc-200 rounded px-1 py-px">⌘</span><span className="bg-white border border-zinc-200 rounded px-1 py-px">K</span></span>
           </button>
           <div className="relative">
@@ -263,7 +263,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 overflow-y-auto p-5">
           {children}
           <footer className="mt-8 pt-4 border-t border-zinc-200/60 text-[10.5px] text-zinc-400 flex items-center justify-between">
-            <span>NEXUS v0.1 · India-focused compliance-ready architecture · Production deployment requires applicable regulatory, legal, security and integration validation.</span>
+            <span>SNIPER v0.1 · India-focused compliance-ready architecture · Production deployment requires applicable regulatory, legal, security and integration validation.</span>
             <span className="hidden sm:block">All data shown is synthetic demo data</span>
           </footer>
         </main>

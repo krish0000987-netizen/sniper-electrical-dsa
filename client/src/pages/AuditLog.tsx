@@ -44,7 +44,7 @@ export default function AuditLog() {
           searchable
           searchPlaceholder="Search actions or entities…"
           onSearch={(v) => { setQ(v); setPage(1); }}
-          exportName="nexus-audit"
+          exportName="sniper-audit"
         />
       </Card>
     </div>

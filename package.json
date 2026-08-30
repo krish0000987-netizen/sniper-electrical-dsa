@@ -1,8 +1,8 @@
 {
-  "name": "nexus",
+  "name": "sniper",
   "private": true,
   "version": "0.1.0",
-  "description": "NEXUS — India's Intelligent Lending Operating System (LOS + LMS + CRM + Credit + Collections)",
+  "description": "SNIPER — India's Intelligent Lending Operating System (LOS + LMS + CRM + Credit + Collections)",
   "workspaces": [
     "server",
     "client"

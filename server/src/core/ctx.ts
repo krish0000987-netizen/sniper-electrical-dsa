@@ -1,8 +1,8 @@
 import { q1 } from "../db/connection.js";
 
 /** Build the flat context used by BRE / underwriting for an application. */
-export function buildApplicationContext(applicationId: number): Record<string, unknown> {
-  const app = q1<Record<string, any>>(
+export async function buildApplicationContext(applicationId: number) {
+  const app = await q1<Record<string, any>>(
     `SELECT a.*, c.name AS customer_name, c.dob, c.employment_type, c.business_name,
             c.annual_income, c.monthly_income, c.business_turnover, c.credit_score,
             c.risk_class, c.pan, c.city, c.state,
@@ -16,11 +16,11 @@ export function buildApplicationContext(applicationId: number): Record<string, u
   );
   if (!app) return {};
 
-  const bureau = q1<Record<string, any>>("SELECT * FROM bureau_reports WHERE customer_id = ? ORDER BY id DESC LIMIT 1", [app.customer_id]);
-  const bank = q1<Record<string, any>>("SELECT * FROM bank_analyses WHERE application_id = ? ORDER BY id DESC LIMIT 1", [applicationId]);
-  const gst = q1<Record<string, any>>("SELECT * FROM gst_profiles WHERE customer_id = ? ORDER BY id DESC LIMIT 1", [app.customer_id]);
-  const docs = q1<Record<string, any>>("SELECT COUNT(*) AS n FROM documents WHERE application_id = ? AND status = 'verified'", [applicationId]);
-  const exposure = q1<Record<string, any>>(
+  const bureau = await q1<Record<string, any>>("SELECT * FROM bureau_reports WHERE customer_id = ? ORDER BY id DESC LIMIT 1", [app.customer_id]);
+  const bank = await q1<Record<string, any>>("SELECT * FROM bank_analyses WHERE application_id = ? ORDER BY id DESC LIMIT 1", [applicationId]);
+  const gst = await q1<Record<string, any>>("SELECT * FROM gst_profiles WHERE customer_id = ? ORDER BY id DESC LIMIT 1", [app.customer_id]);
+  const docs = await q1<Record<string, any>>("SELECT COUNT(*) AS n FROM documents WHERE application_id = ? AND status = 'verified'", [applicationId]);
+  const exposure = await q1<Record<string, any>>(
     `SELECT COALESCE(SUM(outstanding), 0) AS total FROM loans WHERE customer_id = ? AND status NOT IN ('closed', 'written_off')`,
     [app.customer_id]
   );

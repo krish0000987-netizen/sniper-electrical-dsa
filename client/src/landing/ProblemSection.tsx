@@ -57,7 +57,7 @@ export const ProblemSection: React.FC = () => {
               onClick={() => setCollapsed(!collapsed)}
               className="px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold tracking-wider uppercase transition-all cursor-pointer shadow-md inline-flex items-center gap-2 group"
             >
-              <span>{collapsed ? "Expand Fragmented View" : "Simulate NEXUS Unification"}</span>
+              <span>{collapsed ? "Expand Fragmented View" : "Simulate SNIPER Unification"}</span>
               <Sparkles className="w-4 h-4 text-blue-400 group-hover:rotate-12 transition-transform" />
             </button>
           </div>
@@ -113,12 +113,12 @@ export const ProblemSection: React.FC = () => {
 
                 <div className="text-center pt-4">
                   <p className="text-xs font-mono text-slate-500">
-                    ↑ Click "Simulate NEXUS Unification" above to see how NEXUS merges all 12 modules into 1 unified engine.
+                    ↑ Click "Simulate SNIPER Unification" above to see how SNIPER merges all 12 modules into 1 unified engine.
                   </p>
                 </div>
               </motion.div>
             ) : (
-              /* State 2: Collapsed into One Connected NEXUS Engine */
+              /* State 2: Collapsed into One Connected SNIPER Engine */
               <motion.div 
                 key="unified"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -130,14 +130,14 @@ export const ProblemSection: React.FC = () => {
                 <div className="flex items-center justify-between pb-4 border-b border-blue-200">
                   <span className="text-xs font-mono font-bold text-blue-700 uppercase flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    STATUS: NEXUS UNIFIED LENDING ENGINE ACTIVE
+                    STATUS: SNIPER UNIFIED LENDING ENGINE ACTIVE
                   </span>
                   <span className="text-xs font-mono text-emerald-700 font-bold">Zero Reconciliation Gaps • Sub-3 Min SLA</span>
                 </div>
 
                 <div className="p-8 rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white shadow-2xl border border-blue-800 text-center relative overflow-hidden space-y-6">
                   <div className="w-16 h-16 rounded-2xl bg-blue-600 text-white mx-auto flex items-center justify-center font-extrabold text-2xl shadow-xl border border-blue-400">
-                    NEXUS
+                    SNIPER
                   </div>
 
                   <div className="max-w-2xl mx-auto space-y-2">

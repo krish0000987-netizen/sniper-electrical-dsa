@@ -22,7 +22,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           <div className="w-7 h-7 rounded-md bg-brand-600 flex items-center justify-center text-white font-bold text-[13px]">N</div>
           <div>
             <div className="text-[14px] font-bold tracking-tight text-zinc-900 leading-none">Customer Portal</div>
-            <div className="text-[9.5px] font-medium text-zinc-400 uppercase tracking-[0.08em] mt-0.5">NEXUS Lending OS</div>
+            <div className="text-[9.5px] font-medium text-zinc-400 uppercase tracking-[0.08em] mt-0.5">SNIPER Lending OS</div>
           </div>
         </div>
         <nav className="flex-1 overflow-y-auto py-3 px-2.5">

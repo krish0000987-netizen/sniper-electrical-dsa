@@ -25,8 +25,8 @@ import { adminRouter } from "./routes/admin.js";
 import { errorHandler } from "./middleware.js";
 
 /** Build the NEXUS API app. Schema creation and demo seeding run on first build. */
-export function createApp() {
-  createSchema();
+export async function createApp() {
+  await createSchema();
   ensureDemoUsers();
   seedIfEmpty();
 
@@ -68,6 +68,6 @@ export function createApp() {
 
 // Vercel's Express preset imports `src/app.ts` directly and requires the
 // module's default export to be the Express app (it never runs `src/index.ts`).
-// Locally and in tests only the named `createApp()` is used, so keep the default
+// Locally and in tests only the named `await createApp()` is used, so keep the default
 // export null outside Vercel to avoid an extra boot-time schema/seed pass.
-export default process.env.VERCEL ? createApp() : null;
+export default process.env.VERCEL ? await createApp() : null;

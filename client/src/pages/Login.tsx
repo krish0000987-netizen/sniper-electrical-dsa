@@ -4,18 +4,18 @@ import { ShieldCheck, AlertTriangle, Loader2 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 
 const DEMO_USERS = [
-  { email: "admin@nexus.demo", label: "Admin", desc: "Full platform access" },
-  { email: "credit@nexus.demo", label: "Credit", desc: "Underwriting & approvals" },
-  { email: "collections@nexus.demo", label: "Collections", desc: "Recovery & PTPs" },
-  { email: "dsa@nexus.demo", label: "DSA", desc: "Lead & application intake" },
-  { email: "sales@nexus.demo", label: "Sales", desc: "CRM & pipeline" },
-  { email: "customer@nexus.demo", label: "Customer", desc: "Customer portal" }
+  { email: "admin@sniper.demo", label: "Admin", desc: "Full platform access" },
+  { email: "credit@sniper.demo", label: "Credit", desc: "Underwriting & approvals" },
+  { email: "collections@sniper.demo", label: "Collections", desc: "Recovery & PTPs" },
+  { email: "dsa@sniper.demo", label: "DSA", desc: "Lead & application intake" },
+  { email: "sales@sniper.demo", label: "Sales", desc: "CRM & pipeline" },
+  { email: "customer@sniper.demo", label: "Customer", desc: "Customer portal" }
 ];
 
 export default function Login() {
   const { login } = useAuth();
   const nav = useNavigate();
-  const [email, setEmail] = useState("admin@nexus.demo");
+  const [email, setEmail] = useState("admin@sniper.demo");
   const [password, setPassword] = useState("demo1234");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -43,7 +43,7 @@ export default function Login() {
         <div className="flex items-center gap-3 relative">
           <div className="w-10 h-10 rounded-lg bg-brand-600 flex items-center justify-center text-white font-bold text-lg shadow-lg">N</div>
           <div>
-            <div className="text-[20px] font-bold tracking-tight leading-none">NEXUS</div>
+            <div className="text-[20px] font-bold tracking-tight leading-none">SNIPER</div>
             <div className="text-[10px] font-medium text-zinc-400 uppercase tracking-[0.12em] mt-1">Intelligent Lending Operating System</div>
           </div>
         </div>
@@ -73,11 +73,11 @@ export default function Login() {
           <div className="lg:hidden flex items-center gap-2.5 mb-8">
             <div className="w-9 h-9 rounded-lg bg-brand-600 flex items-center justify-center text-white font-bold">N</div>
             <div>
-              <div className="text-[16px] font-bold tracking-tight">NEXUS</div>
+              <div className="text-[16px] font-bold tracking-tight">SNIPER</div>
               <div className="text-[9.5px] text-zinc-500 uppercase tracking-[0.1em]">Lending OS</div>
             </div>
           </div>
-          <h2 className="text-[20px] font-semibold tracking-tight text-zinc-900">Sign in to NEXUS</h2>
+          <h2 className="text-[20px] font-semibold tracking-tight text-zinc-900">Sign in to SNIPER</h2>
           <p className="text-[12.5px] text-zinc-500 mt-1">Your workspace awaits.</p>
 
           <form onSubmit={submit} className="mt-6 space-y-4">

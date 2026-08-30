@@ -26,7 +26,7 @@ export const ComplianceSection: React.FC = () => {
         <div className="bg-white p-6 lg:p-8 rounded-3xl border border-slate-200 shadow-xl space-y-6">
           <div className="flex flex-wrap items-center justify-between border-b border-slate-100 pb-4 gap-4">
             <div>
-              <h3 className="text-base font-bold text-slate-900">NEXUS Regulatory Governance Center</h3>
+              <h3 className="text-base font-bold text-slate-900">SNIPER Regulatory Governance Center</h3>
               <p className="text-xs text-slate-500">Configurable, versioned & auditable rule architecture</p>
             </div>
             <span className="text-xs font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full font-bold">

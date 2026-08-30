@@ -103,7 +103,7 @@ export const UnderwritingSection: React.FC = () => {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
                   <Sparkles className="w-4 h-4 text-blue-600" />
-                  <span>NEXUS AI Credit Summary</span>
+                  <span>SNIPER AI Credit Summary</span>
                   <span className="text-[10px] font-mono bg-blue-600 text-white px-2 py-0.5 rounded uppercase font-bold">
                     AI ASSISTANT • HUMAN SIGN-OFF REQUIRED
                   </span>

@@ -85,9 +85,9 @@ export default function Payments() {
                   body: {
                     source: "HDFC Demo Statement",
                     transactions: [
-                      { txn_date: new Date().toISOString().slice(0, 10), amount: 15400, mode: "NEFT", reference: "DEMO-IMP-001", payer_name: "Nexus Demo" },
-                      { txn_date: new Date().toISOString().slice(0, 10), amount: 22000, mode: "UPI", reference: "DEMO-IMP-002", payer_name: "Nexus Demo" },
-                      { txn_date: new Date().toISOString().slice(0, 10), amount: 9800, mode: "NEFT", reference: "DEMO-IMP-003", payer_name: "Nexus Demo" }
+                      { txn_date: new Date().toISOString().slice(0, 10), amount: 15400, mode: "NEFT", reference: "DEMO-IMP-001", payer_name: "Sniper Demo" },
+                      { txn_date: new Date().toISOString().slice(0, 10), amount: 22000, mode: "UPI", reference: "DEMO-IMP-002", payer_name: "Sniper Demo" },
+                      { txn_date: new Date().toISOString().slice(0, 10), amount: 9800, mode: "NEFT", reference: "DEMO-IMP-003", payer_name: "Sniper Demo" }
                     ]
                   }
                 }), "Bank statement imported & auto-matched");

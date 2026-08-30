@@ -228,14 +228,14 @@ export const MOCK_INTEGRATIONS: IntegrationPartner[] = [
 
 export const WHITE_LABEL_BRANDS: WhiteLabelBrand[] = [
   {
-    id: 'brand-nexus',
-    brandName: 'NEXUS Core System',
+    id: 'brand-sniper',
+    brandName: 'SNIPER Core System',
     primaryColor: '#2563EB',
     accentColor: '#1D4ED8',
-    subdomain: 'app.nexuslending.in',
-    logoText: 'NEXUS',
-    kfsHeader: 'NEXUS FINANCIAL TECHNOLOGIES OPERATING SYSTEM',
-    portalTitle: 'NEXUS Enterprise Borrower Portal'
+    subdomain: 'app.sniperlending.in',
+    logoText: 'SNIPER',
+    kfsHeader: 'SNIPER FINANCIAL TECHNOLOGIES OPERATING SYSTEM',
+    portalTitle: 'SNIPER Enterprise Borrower Portal'
   },
   {
     id: 'brand-abc',

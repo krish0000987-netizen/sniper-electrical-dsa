@@ -47,7 +47,7 @@ export interface SessionUser {
   customer_id: number | null;
 }
 
-export function getUserFromToken(token: string | undefined): SessionUser | null {
+export async function getUserFromToken(token: string | undefined) {
   if (!token) return null;
   const [payload, sig] = token.split(".");
   if (!payload || !sig) return null;
@@ -63,7 +63,7 @@ export function getUserFromToken(token: string | undefined): SessionUser | null 
   }
   if (typeof data.uid !== "number" || typeof data.exp !== "number" || data.exp < Date.now()) return null;
   return (
-    q1<SessionUser>(
+    await q1<SessionUser>(
       `SELECT id, tenant_id, branch_id, name, email, role, phone, customer_id
        FROM users WHERE id = ?`,
       [data.uid]

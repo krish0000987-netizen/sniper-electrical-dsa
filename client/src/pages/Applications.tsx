@@ -93,7 +93,7 @@ export default function Applications() {
           searchPlaceholder="Search by application no, customer, mobile…"
           onSearch={(v) => { setQ(v); setPage(1); }}
           onRowClick={(r) => nav(`/applications/${r.id}`)}
-          exportName="nexus-applications"
+          exportName="sniper-applications"
         />
       </Card>
 

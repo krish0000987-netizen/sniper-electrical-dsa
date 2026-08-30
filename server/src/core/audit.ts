@@ -13,8 +13,8 @@ export interface AuditParams {
 }
 
 /** Append-only audit event. Never updated or deleted. */
-export function audit(p: AuditParams) {
-  run(
+export async function audit(p: AuditParams) {
+  await run(
     `INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, before, after, ip, device)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [

@@ -79,8 +79,8 @@ export interface CommissionResult {
 }
 
 /** Tax/GST rates — configurable per tenant via system_config gn_settings. */
-export function gnSettings(tenantId: number) {
-  const row = q1<{ value: string }>("SELECT value FROM system_config WHERE tenant_id = ? AND key = 'gn_settings'", [tenantId]);
+export async function gnSettings(tenantId: number) {
+  const row = await q1<{ value: string }>("SELECT value FROM system_config WHERE tenant_id = ? AND key = 'gn_settings'", [tenantId]);
   const base = { tds_pct: 2, gst_pct: 18, partner_split_pct: 60 };
   if (!row) return base;
   try { return { ...base, ...JSON.parse(row.value) }; } catch { return base; }
@@ -102,29 +102,29 @@ export function effectiveRate(app: Record<string, any>): number {
 
 /* ---------- Reference generators ---------- */
 
-export function gnRef(tenantId: number): string {
+export async function gnRef(tenantId: number) {
   const year = new Date().getFullYear();
-  const n = (q1<{ n: number }>("SELECT COUNT(*) AS n FROM gn_applications WHERE tenant_id = ?", [tenantId])?.n ?? 0) + 1;
+  const n = ((await q1<{ n: number }>("SELECT COUNT(*) AS n FROM gn_applications WHERE tenant_id = ?", [tenantId]))?.n ?? 0) + 1;
   return `GN-${year}-${String(10000 + n)}`;
 }
 
-export function batchRef(tenantId: number): string {
+export async function batchRef(tenantId: number) {
   const year = new Date().getFullYear();
-  const n = (q1<{ n: number }>("SELECT COUNT(*) AS n FROM gn_payout_batches WHERE tenant_id = ?", [tenantId])?.n ?? 0) + 1;
+  const n = ((await q1<{ n: number }>("SELECT COUNT(*) AS n FROM gn_payout_batches WHERE tenant_id = ?", [tenantId]))?.n ?? 0) + 1;
   return `PB-${year}-${String(1000 + n)}`;
 }
 
 /* ---------- Timeline + notifications ---------- */
 
-export function gnTimeline(tenantId: number, appId: number, event: string, note: string | null, actor: number | null) {
-  run(
+export async function gnTimeline(tenantId: number, appId: number, event: string, note: string | null, actor: number | null) {
+  await run(
     "INSERT INTO gn_application_timeline (tenant_id, app_id, event, note, actor) VALUES (?, ?, ?, ?, ?)",
     [tenantId, appId, event, note, actor]
   );
 }
 
-export function gnNotify(tenantId: number, userId: number | null, title: string, body: string) {
-  run("INSERT INTO notifications (tenant_id, user_id, kind, title, body) VALUES (?, ?, 'inapp', ?, ?)", [tenantId, userId, title, body]);
+export async function gnNotify(tenantId: number, userId: number | null, title: string, body: string) {
+  await run("INSERT INTO notifications (tenant_id, user_id, kind, title, body) VALUES (?, ?, 'inapp', ?, ?)", [tenantId, userId, title, body]);
 }
 
 /* ================== Configurable Roles & Permissions ================== */
@@ -196,19 +196,19 @@ export interface ResolvedPerms {
  * - System role, no rows     → built-in defaults (fallback).
  * - Custom/system role WITH grid rows → the grid is authoritative (admin toggles).
  */
-export function resolveRolePerms(tenantId: number, role: string): ResolvedPerms {
+export async function resolveRolePerms(tenantId: number, role: string) {
   const key = `${tenantId}:${role}`;
   const cached = permCache.get(key);
   if (cached && Date.now() - cached.at < PERM_TTL_MS) {
     return { perms: cached.perms, scopes: cached.scopes, roleRow: cached.roleRow };
   }
-  const roleRow = q1<{ id: number; name: string; kind: string; designation: string | null; partner_type: string | null; is_system: number }>(
+  const roleRow = await q1<{ id: number; name: string; kind: string; designation: string | null; partner_type: string | null; is_system: number }>(
     "SELECT id, name, kind, designation, partner_type, is_system FROM gn_roles WHERE tenant_id = ? AND code = ?", [tenantId, role]
   );
   let perms: Set<string>;
   let scopes = new Map<string, string>();
   if (roleRow) {
-    const rows = q<{ module: string; action: string; scope: string; allowed: number }>(
+    const rows = await q<{ module: string; action: string; scope: string; allowed: number }>(
       "SELECT module, action, scope, allowed FROM gn_role_permissions WHERE tenant_id = ? AND role_id = ?", [tenantId, roleRow.id]
     );
     if (rows.length > 0) {
@@ -237,8 +237,8 @@ export function resolveRolePerms(tenantId: number, role: string): ResolvedPerms 
  * (gn.view / gn.*) that existing routes rely on are derived from the grid so that
  * admin-toggled roles keep working end-to-end.
  */
-export function hasGnPerm(tenantId: number, role: string, perm: string): boolean {
-  const { perms } = resolveRolePerms(tenantId, role);
+export async function hasGnPerm(tenantId: number, role: string, perm: string) {
+  const { perms } = await resolveRolePerms(tenantId, role);
   const locked = GN_LOCKED_MODULES.some((x) => perm.startsWith(x));
   for (const p of perms) {
     if (p === "*") return true;
@@ -293,8 +293,8 @@ export const GN_NEW_MODULE_DEFAULTS: Record<string, Record<string, string[]>> = 
 };
 
 /** Seed the full permission grid for a role from its built-in defaults. */
-export function seedRolePermissions(tenantId: number, roleCode: string) {
-  const roleRow = q1<{ id: number }>("SELECT id FROM gn_roles WHERE tenant_id = ? AND code = ?", [tenantId, roleCode]);
+export async function seedRolePermissions(tenantId: number, roleCode: string) {
+  const roleRow = await q1<{ id: number }>("SELECT id FROM gn_roles WHERE tenant_id = ? AND code = ?", [tenantId, roleCode]);
   if (!roleRow) return;
   for (const m of GN_MODULES) {
     for (const a of GN_ACTIONS) {
@@ -304,7 +304,7 @@ export function seedRolePermissions(tenantId: number, roleCode: string) {
         const defaults = GN_NEW_MODULE_DEFAULTS[m]?.[a] ?? [];
         if (defaults.includes(roleCode)) allowed = 1;
       }
-      run(
+      await run(
         "INSERT OR REPLACE INTO gn_role_permissions (tenant_id, role_id, module, action, scope, allowed) VALUES (?, ?, ?, ?, 'all', ?)",
         [tenantId, roleRow.id, m, a, allowed]
       );

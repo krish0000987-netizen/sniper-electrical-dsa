@@ -116,7 +116,7 @@ export default function Risk() {
       </div>
 
       <Card className="mt-4">
-        <CardTitle title="Fraud surveillance" sub="Applications flagged by the NEXUS fraud engine" />
+        <CardTitle title="Fraud surveillance" sub="Applications flagged by the SNIPER fraud engine" />
         <div className="divide-y divide-zinc-50">
           {data.fraud?.map((f: any) => (
             <div key={f.id} className="flex items-center justify-between py-2.5 cursor-pointer hover:bg-zinc-50" onClick={() => nav(`/applications/${f.id}`)}>

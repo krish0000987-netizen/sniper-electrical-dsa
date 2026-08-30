@@ -13,7 +13,7 @@ export const CrmSection: React.FC = () => {
           <div className="max-w-2xl space-y-3">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold uppercase tracking-wider">
               <Users className="w-3.5 h-3.5 text-blue-600" />
-              <span>NEXUS LENDING CRM</span>
+              <span>SNIPER LENDING CRM</span>
             </div>
             <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-950 tracking-tight leading-tight">
               TURN EVERY LEAD INTO A CONNECTED CUSTOMER JOURNEY.
@@ -61,7 +61,7 @@ export const CrmSection: React.FC = () => {
                 <Users className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-base text-white">NEXUS Omnichannel Lead Engine</h3>
+                <h3 className="font-bold text-base text-white">SNIPER Omnichannel Lead Engine</h3>
                 <p className="text-xs text-slate-400">Total Active Leads: 1,420 • Conversion Rate: 28.4%</p>
               </div>
             </div>

@@ -143,19 +143,19 @@ export function validateRow(mapped: Record<string, any>): { errors: { field: str
   return { errors, missing };
 }
 
-function existingCustomer(t: number, mapped: Record<string, any>): { type: "existing_customer" | "existing_applicant" | "in_batch"; detail: string } | null {
+async function existingCustomer(t: number, mapped: Record<string, any>) {
   const mobile = normMobile(mapped.mobile);
   const pan = mapped.pan ? String(mapped.pan).toUpperCase() : null;
   const email = mapped.email ? String(mapped.email).toLowerCase() : null;
-  const c = mobile ? q1<Record<string, any>>("SELECT id, name, mobile, pan FROM customers WHERE tenant_id = ? AND mobile = ?", [t, mobile]) : null;
+  const c = mobile ? await q1<Record<string, any>>("SELECT id, name, mobile, pan FROM customers WHERE tenant_id = ? AND mobile = ?", [t, mobile]) : null;
   if (c) return { type: "existing_customer", detail: `Customer ${c.name} (mobile ${mobile})` };
-  const c2 = pan ? q1<Record<string, any>>("SELECT id, name, pan FROM customers WHERE tenant_id = ? AND pan = ?", [t, pan]) : null;
+  const c2 = pan ? await q1<Record<string, any>>("SELECT id, name, pan FROM customers WHERE tenant_id = ? AND pan = ?", [t, pan]) : null;
   if (c2) return { type: "existing_customer", detail: `Customer ${c2.name} (PAN ${pan})` };
-  const a = mobile ? q1<Record<string, any>>("SELECT id, ref, name FROM gn_applicants WHERE tenant_id = ? AND mobile = ?", [t, mobile]) : null;
+  const a = mobile ? await q1<Record<string, any>>("SELECT id, ref, name FROM gn_applicants WHERE tenant_id = ? AND mobile = ?", [t, mobile]) : null;
   if (a) return { type: "existing_applicant", detail: `Applicant ${a.name} (${a.ref})` };
-  const a2 = pan ? q1<Record<string, any>>("SELECT id, ref, name FROM gn_applicants WHERE tenant_id = ? AND pan = ?", [t, pan]) : null;
+  const a2 = pan ? await q1<Record<string, any>>("SELECT id, ref, name FROM gn_applicants WHERE tenant_id = ? AND pan = ?", [t, pan]) : null;
   if (a2) return { type: "existing_applicant", detail: `Applicant ${a2.name} (${a2.ref})` };
-  const e = email ? q1<Record<string, any>>("SELECT id, name FROM customers WHERE tenant_id = ? AND email = ?", [t, email]) : null;
+  const e = email ? await q1<Record<string, any>>("SELECT id, name FROM customers WHERE tenant_id = ? AND email = ?", [t, email]) : null;
   if (e) return { type: "existing_customer", detail: `Customer ${e.name} (email ${email})` };
   return null;
 }
@@ -259,13 +259,13 @@ const batchSchema = z.object({
 
 gnBulkRouter.get("/gn/bulk", requirePerm("gn.bulk.view"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const batches = q<Record<string, any>>(
+  const batches = await q<Record<string, any>>(
     `SELECT b.*, u.name AS created_name,
        (SELECT COUNT(*) FROM gn_bulk_rows r WHERE r.batch_id = b.id) AS rows,
        (SELECT COUNT(*) FROM gn_bulk_errors e WHERE e.batch_id = b.id AND e.status = 'open') AS open_errors
      FROM gn_bulk_batches b LEFT JOIN users u ON u.id = b.created_by
      WHERE b.tenant_id = ? ORDER BY b.id DESC LIMIT 100`, [t]);
-  const kpi = q1<Record<string, any>>(
+  const kpi = await q1<Record<string, any>>(
     `SELECT COUNT(*) AS total_batches,
        SUM(CASE WHEN status IN ('processing','validating','uploaded') THEN 1 ELSE 0 END) AS processing,
        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
@@ -288,18 +288,18 @@ gnBulkRouter.get("/gn/bulk", requirePerm("gn.bulk.view"), asyncH(async (req: Aut
 gnBulkRouter.post("/gn/bulk/batches", requirePerm("gn.bulk.create"), asyncH(async (req: AuthedRequest, res) => {
   const b = batchSchema.parse(req.body);
   const t = T(req);
-  const id = run(
+  const id = (await run(
     `INSERT INTO gn_bulk_batches (tenant_id, name, description, source, loan_type, assigned_team, priority, mode, status, created_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
     [t, b.name, b.description ?? null, b.source ?? "Manual", b.loan_type ?? null, b.assigned_team ?? null, b.priority ?? "normal", b.mode ?? "assisted", req.user!.id]
-  ).lastId;
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.batch.create", entityType: "gn_bulk_batch", entityId: id, after: b, ip: clientIp(req) });
-  res.json(q1("SELECT * FROM gn_bulk_batches WHERE id = ?", [id]));
+  )).lastId;
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.batch.create", entityType: "gn_bulk_batch", entityId: id, after: b, ip: clientIp(req) });
+  res.json(await q1("SELECT * FROM gn_bulk_batches WHERE id = ?", [id]));
 }));
 
 gnBulkRouter.get("/gn/bulk/batches/:id", requirePerm("gn.bulk.view"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const batch = q1<Record<string, any>>(
+  const batch = await q1<Record<string, any>>(
     `SELECT b.*, u.name AS created_name FROM gn_bulk_batches b LEFT JOIN users u ON u.id = b.created_by WHERE b.id = ? AND b.tenant_id = ?`,
     [req.params.id, t]);
   if (!batch) { res.status(404).json({ error: "Batch not found" }); return; }
@@ -308,21 +308,21 @@ gnBulkRouter.get("/gn/bulk/batches/:id", requirePerm("gn.bulk.view"), asyncH(asy
   const params: unknown[] = [batch.id];
   if (status) { where.push("r.status = ?"); params.push(status); }
   if (query) { where.push("(r.mapped LIKE ? OR r.error LIKE ?)"); params.push(`%${query}%`, `%${query}%`); }
-  const total = q1<{ n: number }>(`SELECT COUNT(*) AS n FROM gn_bulk_rows r WHERE ${where.join(" AND ")}`, params)!.n;
+  const total = (await q1<{ n: number }>(`SELECT COUNT(*) AS n FROM gn_bulk_rows r WHERE ${where.join(" AND ")}`, params))!.n;
   const off = (Math.max(1, Number(page)) - 1) * Number(limit);
-  const rows = q<Record<string, any>>(`SELECT * FROM gn_bulk_rows r WHERE ${where.join(" AND ")} ORDER BY r.row_no LIMIT ? OFFSET ?`, [...params, Number(limit), off]);
-  const byStatus = q<Record<string, any>>("SELECT status, COUNT(*) AS n FROM gn_bulk_rows WHERE batch_id = ? GROUP BY status", [batch.id]);
-  const errors = q<Record<string, any>>(
+  const rows = await q<Record<string, any>>(`SELECT * FROM gn_bulk_rows r WHERE ${where.join(" AND ")} ORDER BY r.row_no LIMIT ? OFFSET ?`, [...params, Number(limit), off]);
+  const byStatus = await q<Record<string, any>>("SELECT status, COUNT(*) AS n FROM gn_bulk_rows WHERE batch_id = ? GROUP BY status", [batch.id]);
+  const errors = await q<Record<string, any>>(
     `SELECT e.*, r.row_no FROM gn_bulk_errors e LEFT JOIN gn_bulk_rows r ON r.id = e.row_id
      WHERE e.batch_id = ? ORDER BY e.id DESC LIMIT 100`, [batch.id]);
-  const jobs = q1<Record<string, any>>(
+  const jobs = await q1<Record<string, any>>(
     `SELECT COUNT(*) AS total,
        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
        SUM(CASE WHEN status = 'retrying' THEN 1 ELSE 0 END) AS retrying,
        SUM(CASE WHEN status IN ('queued','processing','paused') THEN 1 ELSE 0 END) AS pending
      FROM gn_bulk_jobs WHERE batch_id = ?`, [batch.id])!;
-  const jobRows = q<Record<string, any>>(
+  const jobRows = await q<Record<string, any>>(
     `SELECT j.*, r.row_no FROM gn_bulk_jobs j LEFT JOIN gn_bulk_rows r ON r.id = j.row_id
      WHERE j.batch_id = ? ORDER BY j.id DESC LIMIT 60`, [batch.id]);
   res.json({ batch, rows, total, page: Number(page), limit: Number(limit), byStatus, errors, jobs, jobRows });
@@ -330,7 +330,7 @@ gnBulkRouter.get("/gn/bulk/batches/:id", requirePerm("gn.bulk.view"), asyncH(asy
 
 gnBulkRouter.post("/gn/bulk/batches/:id/upload", requirePerm("gn.bulk.upload"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const batch = q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const batch = await q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!batch) { res.status(404).json({ error: "Batch not found" }); return; }
   const b = z.object({ filename: z.string(), data: z.string(), mapping: z.record(z.string(), z.number()).optional() }).parse(req.body);
   const buf = Buffer.from(b.data, "base64");
@@ -366,26 +366,26 @@ gnBulkRouter.post("/gn/bulk/batches/:id/upload", requirePerm("gn.bulk.upload"), 
     return;
   }
   if (records.length > 10000) { res.status(400).json({ error: "Maximum 10,000 rows per batch" }); return; }
-  run("DELETE FROM gn_bulk_rows WHERE batch_id = ?", [batch.id]);
+  await run("DELETE FROM gn_bulk_rows WHERE batch_id = ?", [batch.id]);
   let n = 0;
   for (const rec of records) {
-    run(
+    await run(
       "INSERT INTO gn_bulk_rows (tenant_id, batch_id, row_no, raw, mapped, status) VALUES (?, ?, ?, ?, ?, 'pending')",
       [t, batch.id, n + 1, JSON.stringify({ header: rec.header, values: rec.values }), JSON.stringify(rec.mapped)]
     );
     n++;
   }
-  run("UPDATE gn_bulk_batches SET status = 'uploaded', total_rows = ?, valid = 0, invalid = 0, duplicates = 0, updated_at = datetime('now') WHERE id = ?", [n, batch.id]);
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.upload", entityType: "gn_bulk_batch", entityId: batch.id, after: { filename: b.filename, rows: n }, ip: clientIp(req) });
+  await run("UPDATE gn_bulk_batches SET status = 'uploaded', total_rows = ?, valid = 0, invalid = 0, duplicates = 0, updated_at = datetime('now') WHERE id = ?", [n, batch.id]);
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.upload", entityType: "gn_bulk_batch", entityId: batch.id, after: { filename: b.filename, rows: n }, ip: clientIp(req) });
   res.json({ ok: true, rows: n, mapping: usedMap, header: records[0]?.header ?? [] });
 }));
 
 gnBulkRouter.post("/gn/bulk/batches/:id/map", requirePerm("gn.bulk.process"), asyncH(async (req: AuthedRequest, res) => {
   const b = z.object({ mapping: z.record(z.string(), z.number()) }).parse(req.body);
   const t = T(req);
-  const batch = q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const batch = await q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!batch) { res.status(404).json({ error: "Batch not found" }); return; }
-  const rows = q<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE batch_id = ?", [batch.id]);
+  const rows = await q<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE batch_id = ?", [batch.id]);
   let mapped = 0;
   for (const row of rows) {
     const raw = safeJson(row.raw, null);
@@ -395,43 +395,43 @@ gnBulkRouter.post("/gn/bulk/batches/:id/map", requirePerm("gn.bulk.process"), as
     } else {
       next = safeJson(row.mapped, {});
     }
-    run("UPDATE gn_bulk_rows SET mapped = ?, status = 'pending', error = NULL WHERE id = ?", [JSON.stringify(next), row.id]);
+    await run("UPDATE gn_bulk_rows SET mapped = ?, status = 'pending', error = NULL WHERE id = ?", [JSON.stringify(next), row.id]);
     mapped++;
   }
-  run("UPDATE gn_bulk_batches SET status = 'uploaded', valid = 0, invalid = 0, duplicates = 0, updated_at = datetime('now') WHERE id = ?", [batch.id]);
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.map", entityType: "gn_bulk_batch", entityId: batch.id, after: { mapping: b.mapping }, ip: clientIp(req) });
+  await run("UPDATE gn_bulk_batches SET status = 'uploaded', valid = 0, invalid = 0, duplicates = 0, updated_at = datetime('now') WHERE id = ?", [batch.id]);
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.map", entityType: "gn_bulk_batch", entityId: batch.id, after: { mapping: b.mapping }, ip: clientIp(req) });
   res.json({ ok: true, rows: mapped });
 }));
 
 gnBulkRouter.post("/gn/bulk/batches/:id/validate", requirePerm("gn.bulk.process"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const batch = q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const batch = await q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!batch) { res.status(404).json({ error: "Batch not found" }); return; }
-  run("UPDATE gn_bulk_batches SET status = 'validating', updated_at = datetime('now') WHERE id = ?", [batch.id]);
-  const rows = q<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE batch_id = ?", [batch.id]);
+  await run("UPDATE gn_bulk_batches SET status = 'validating', updated_at = datetime('now') WHERE id = ?", [batch.id]);
+  const rows = await q<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE batch_id = ?", [batch.id]);
   let valid = 0, invalid = 0, missing = 0;
   for (const row of rows) {
     const mapped = safeJson(row.mapped, {});
     const { errors, missing: isMissing } = validateRow(mapped);
-    run("UPDATE gn_bulk_rows SET validation = ?, status = ?, error = ? WHERE id = ?",
+    await run("UPDATE gn_bulk_rows SET validation = ?, status = ?, error = ? WHERE id = ?",
       [JSON.stringify(errors), errors.length === 0 ? "valid" : isMissing ? "missing" : "invalid", errors.length ? errors.map((e) => e.error).join("; ") : null, row.id]);
     if (errors.length === 0) valid++;
     else if (isMissing) missing++;
     else invalid++;
     for (const e of errors) {
-      bulkError(t, batch.id, row.id, "invalid_data", `Row ${row.row_no}: ${e.field} — ${e.error}`, `Correct the ${e.field} value in row ${row.row_no} and revalidate`);
+      await bulkError(t, batch.id, row.id, "invalid_data", `Row ${row.row_no}: ${e.field} — ${e.error}`, `Correct the ${e.field} value in row ${row.row_no} and revalidate`);
     }
   }
-  run("UPDATE gn_bulk_batches SET status = 'validated', valid = ?, invalid = ?, missing = ?, updated_at = datetime('now') WHERE id = ?", [valid, invalid, missing, batch.id]);
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.validate", entityType: "gn_bulk_batch", entityId: batch.id, after: { valid, invalid, missing }, ip: clientIp(req) });
+  await run("UPDATE gn_bulk_batches SET status = 'validated', valid = ?, invalid = ?, missing = ?, updated_at = datetime('now') WHERE id = ?", [valid, invalid, missing, batch.id]);
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.validate", entityType: "gn_bulk_batch", entityId: batch.id, after: { valid, invalid, missing }, ip: clientIp(req) });
   res.json({ valid, invalid, missing });
 }));
 
 gnBulkRouter.post("/gn/bulk/batches/:id/dedupe", requirePerm("gn.bulk.process"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const batch = q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const batch = await q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!batch) { res.status(404).json({ error: "Batch not found" }); return; }
-  const rows = q<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE batch_id = ? AND status = 'valid' ORDER BY row_no", [batch.id]);
+  const rows = await q<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE batch_id = ? AND status = 'valid' ORDER BY row_no", [batch.id]);
   const seenMobiles = new Map<string, number>();
   const seenPans = new Map<string, number>();
   let duplicates = 0;
@@ -440,28 +440,28 @@ gnBulkRouter.post("/gn/bulk/batches/:id/dedupe", requirePerm("gn.bulk.process"),
     const mobile = normMobile(mapped.mobile);
     const pan = mapped.pan ? String(mapped.pan).toUpperCase() : null;
     const inBatch = mobile && seenMobiles.has(mobile) ? { detail: `Row ${seenMobiles.get(mobile)} has the same mobile ${mobile}` } : pan && seenPans.has(pan) ? { detail: `Row ${seenPans.get(pan)} has the same PAN ${pan}` } : null;
-    const ext = !inBatch ? existingCustomer(t, mapped) : null;
+    const ext = !inBatch ? await existingCustomer(t, mapped) : null;
     const dup = inBatch ?? ext;
     if (dup) {
       duplicates++;
-      run("UPDATE gn_bulk_rows SET status = 'duplicate', error = ? WHERE id = ?", [dup.detail, row.id]);
-      bulkError(t, batch.id, row.id, "duplicate", `Row ${row.row_no}: ${dup.detail}`, "Create a new application for this existing customer instead of a new customer");
+      await run("UPDATE gn_bulk_rows SET status = 'duplicate', error = ? WHERE id = ?", [dup.detail, row.id]);
+      await bulkError(t, batch.id, row.id, "duplicate", `Row ${row.row_no}: ${dup.detail}`, "Create a new application for this existing customer instead of a new customer");
       continue;
     }
     if (mobile) seenMobiles.set(mobile, row.row_no);
     if (pan) seenPans.set(pan, row.row_no);
   }
-  run("UPDATE gn_bulk_batches SET duplicates = ?, valid = (SELECT COUNT(*) FROM gn_bulk_rows WHERE batch_id = ? AND status = 'valid'), updated_at = datetime('now') WHERE id = ?", [duplicates, batch.id, batch.id]);
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.dedupe", entityType: "gn_bulk_batch", entityId: batch.id, after: { duplicates }, ip: clientIp(req) });
+  await run("UPDATE gn_bulk_batches SET duplicates = ?, valid = (SELECT COUNT(*) FROM gn_bulk_rows WHERE batch_id = ? AND status = 'valid'), updated_at = datetime('now') WHERE id = ?", [duplicates, batch.id, batch.id]);
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.dedupe", entityType: "gn_bulk_batch", entityId: batch.id, after: { duplicates }, ip: clientIp(req) });
   res.json({ duplicates });
 }));
 
 gnBulkRouter.post("/gn/bulk/batches/:id/preview", requirePerm("gn.bulk.process"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const batch = q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const batch = await q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!batch) { res.status(404).json({ error: "Batch not found" }); return; }
-  const byStatus = q<Record<string, any>>("SELECT status, COUNT(*) AS n FROM gn_bulk_rows WHERE batch_id = ? GROUP BY status", [batch.id]);
-  const byLoanType = q<Record<string, any>>(
+  const byStatus = await q<Record<string, any>>("SELECT status, COUNT(*) AS n FROM gn_bulk_rows WHERE batch_id = ? GROUP BY status", [batch.id]);
+  const byLoanType = await q<Record<string, any>>(
     `SELECT json_extract(mapped, '$.loan_type') AS loan_type, COUNT(*) AS n FROM gn_bulk_rows
      WHERE batch_id = ? AND status = 'valid' GROUP BY loan_type ORDER BY n DESC`, [batch.id]);
   res.json({ batch, byStatus, byLoanType, preview: true });
@@ -469,68 +469,68 @@ gnBulkRouter.post("/gn/bulk/batches/:id/preview", requirePerm("gn.bulk.process")
 
 gnBulkRouter.post("/gn/bulk/batches/:id/process", requirePerm("gn.bulk.process"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const batch = q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const batch = await q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!batch) { res.status(404).json({ error: "Batch not found" }); return; }
   if (batch.valid === 0) { res.status(400).json({ error: "No valid rows — run validation and dedupe first" }); return; }
-  const out = processBulkBatch(t, batch.id, req.user!.id);
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.process", entityType: "gn_bulk_batch", entityId: batch.id, after: out, ip: clientIp(req) });
+  const out = await processBulkBatch(t, batch.id, req.user!.id);
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.process", entityType: "gn_bulk_batch", entityId: batch.id, after: out, ip: clientIp(req) });
   res.json(out);
 }));
 
 gnBulkRouter.post("/gn/bulk/batches/:id/control", requirePerm("gn.bulk.manage"), asyncH(async (req: AuthedRequest, res) => {
   const b = z.object({ action: z.enum(["pause", "resume", "cancel", "retry", "restart_failed", "archive"]) }).parse(req.body);
   const t = T(req);
-  const batch = q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const batch = await q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!batch) { res.status(404).json({ error: "Batch not found" }); return; }
   if (b.action === "pause") {
-    run("UPDATE gn_bulk_batches SET status = 'paused', updated_at = datetime('now') WHERE id = ?", [batch.id]);
-    run("UPDATE gn_bulk_jobs SET status = 'paused' WHERE batch_id = ? AND status IN ('queued','processing')", [batch.id]);
+    await run("UPDATE gn_bulk_batches SET status = 'paused', updated_at = datetime('now') WHERE id = ?", [batch.id]);
+    await run("UPDATE gn_bulk_jobs SET status = 'paused' WHERE batch_id = ? AND status IN ('queued','processing')", [batch.id]);
   } else if (b.action === "resume") {
-    run("UPDATE gn_bulk_batches SET status = 'validated', updated_at = datetime('now') WHERE id = ?", [batch.id]);
+    await run("UPDATE gn_bulk_batches SET status = 'validated', updated_at = datetime('now') WHERE id = ?", [batch.id]);
   } else if (b.action === "cancel") {
-    run("UPDATE gn_bulk_batches SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?", [batch.id]);
-    run("UPDATE gn_bulk_jobs SET status = 'cancelled' WHERE batch_id = ? AND status IN ('queued','processing','paused')", [batch.id]);
+    await run("UPDATE gn_bulk_batches SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?", [batch.id]);
+    await run("UPDATE gn_bulk_jobs SET status = 'cancelled' WHERE batch_id = ? AND status IN ('queued','processing','paused')", [batch.id]);
   } else if (b.action === "retry" || b.action === "restart_failed") {
-    run("UPDATE gn_bulk_rows SET status = 'valid' WHERE batch_id = ? AND status = 'failed'", [batch.id]);
-    run("UPDATE gn_bulk_errors SET status = 'resolved' WHERE batch_id = ? AND status = 'open' AND category != 'duplicate'", [batch.id]);
-    const out = processBulkBatch(t, batch.id, req.user!.id);
-    audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.retry", entityType: "gn_bulk_batch", entityId: batch.id, after: out, ip: clientIp(req) });
+    await run("UPDATE gn_bulk_rows SET status = 'valid' WHERE batch_id = ? AND status = 'failed'", [batch.id]);
+    await run("UPDATE gn_bulk_errors SET status = 'resolved' WHERE batch_id = ? AND status = 'open' AND category != 'duplicate'", [batch.id]);
+    const out = await processBulkBatch(t, batch.id, req.user!.id);
+    await audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.retry", entityType: "gn_bulk_batch", entityId: batch.id, after: out, ip: clientIp(req) });
     res.json(out);
     return;
   } else if (b.action === "archive") {
-    run("UPDATE gn_bulk_batches SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?", [batch.id]);
+    await run("UPDATE gn_bulk_batches SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?", [batch.id]);
   }
-  audit({ tenantId: t, userId: req.user!.id, action: `gn.bulk.${b.action}`, entityType: "gn_bulk_batch", entityId: batch.id, before: { status: batch.status }, after: { action: b.action }, ip: clientIp(req) });
-  res.json(q1("SELECT * FROM gn_bulk_batches WHERE id = ?", [batch.id]));
+  await audit({ tenantId: t, userId: req.user!.id, action: `gn.bulk.${b.action}`, entityType: "gn_bulk_batch", entityId: batch.id, before: { status: batch.status }, after: { action: b.action }, ip: clientIp(req) });
+  res.json(await q1("SELECT * FROM gn_bulk_batches WHERE id = ?", [batch.id]));
 }));
 
 gnBulkRouter.patch("/gn/bulk/rows/:id", requirePerm("gn.bulk.process"), asyncH(async (req: AuthedRequest, res) => {
   const b = z.object({ mapped: z.record(z.string(), z.any()) }).parse(req.body);
   const t = T(req);
-  const row = q1<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const row = await q1<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!row) { res.status(404).json({ error: "Row not found" }); return; }
   const mapped = { ...safeJson(row.mapped, {}), ...b.mapped };
   const { errors, missing: isMissing } = validateRow(mapped);
-  run("UPDATE gn_bulk_rows SET mapped = ?, validation = ?, status = ?, error = ? WHERE id = ?",
+  await run("UPDATE gn_bulk_rows SET mapped = ?, validation = ?, status = ?, error = ? WHERE id = ?",
     [JSON.stringify(mapped), JSON.stringify(errors), errors.length === 0 ? "valid" : isMissing ? "missing" : "invalid", errors.length ? errors.map((e) => e.error).join("; ") : null, row.id]);
-  if (errors.length) bulkError(t, row.batch_id, row.id, "invalid_data", `Row ${row.row_no}: ${errors.map((e) => e.error).join("; ")}`, "Fix the highlighted fields and save again");
-  res.json(q1("SELECT * FROM gn_bulk_rows WHERE id = ?", [row.id]));
+  if (errors.length) await bulkError(t, row.batch_id, row.id, "invalid_data", `Row ${row.row_no}: ${errors.map((e) => e.error).join("; ")}`, "Fix the highlighted fields and save again");
+  res.json(await q1("SELECT * FROM gn_bulk_rows WHERE id = ?", [row.id]));
 }));
 
 gnBulkRouter.post("/gn/bulk/rows/:id/ignore", requirePerm("gn.bulk.process"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const row = q1<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const row = await q1<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!row) { res.status(404).json({ error: "Row not found" }); return; }
-  run("UPDATE gn_bulk_rows SET status = 'skipped' WHERE id = ?", [row.id]);
-  run("UPDATE gn_bulk_errors SET status = 'ignored' WHERE row_id = ?", [row.id]);
+  await run("UPDATE gn_bulk_rows SET status = 'skipped' WHERE id = ?", [row.id]);
+  await run("UPDATE gn_bulk_errors SET status = 'ignored' WHERE row_id = ?", [row.id]);
   res.json({ ok: true });
 }));
 
 gnBulkRouter.get("/gn/bulk/batches/:id/errors", requirePerm("gn.bulk.view"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const batch = q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const batch = await q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!batch) { res.status(404).json({ error: "Batch not found" }); return; }
-  const errors = q<Record<string, any>>(
+  const errors = await q<Record<string, any>>(
     `SELECT e.*, r.row_no FROM gn_bulk_errors e LEFT JOIN gn_bulk_rows r ON r.id = e.row_id
      WHERE e.batch_id = ? ORDER BY e.id DESC LIMIT 300`, [batch.id]);
   res.json({ errors });
@@ -539,18 +539,18 @@ gnBulkRouter.get("/gn/bulk/batches/:id/errors", requirePerm("gn.bulk.view"), asy
 gnBulkRouter.post("/gn/bulk/batches/:id/export", requirePerm("gn.bulk.export"), asyncH(async (req: AuthedRequest, res) => {
   const b = z.object({ filter: z.string().optional() }).parse(req.body);
   const t = T(req);
-  const batch = q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
+  const batch = await q1<Record<string, any>>("SELECT * FROM gn_bulk_batches WHERE id = ? AND tenant_id = ?", [req.params.id, t]);
   if (!batch) { res.status(404).json({ error: "Batch not found" }); return; }
   const where = ["batch_id = ?", b.filter ? "status = ?" : "1 = 1"];
   const params: unknown[] = [batch.id, ...(b.filter ? [b.filter] : [])];
-  const rows = q<Record<string, any>>(`SELECT * FROM gn_bulk_rows WHERE ${where.join(" AND ")} ORDER BY row_no`, params);
+  const rows = await q<Record<string, any>>(`SELECT * FROM gn_bulk_rows WHERE ${where.join(" AND ")} ORDER BY row_no`, params);
   const cols = ["row_no", "status", "error", "applicant_id", "application_id", "mapped"];
   const csv = "\uFEFF" + cols.join(",") + "\n" + rows.map((r) => cols.map((c) => {
     const v = c === "mapped" ? JSON.stringify(safeJson(r.mapped, {})) : r[c];
     const s = v === null || v === undefined ? "" : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   }).join(",")).join("\n");
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.export", entityType: "gn_bulk_batch", entityId: batch.id, after: { filter: b.filter ?? "all", rows: rows.length }, ip: clientIp(req) });
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.export", entityType: "gn_bulk_batch", entityId: batch.id, after: { filter: b.filter ?? "all", rows: rows.length }, ip: clientIp(req) });
   res.setHeader("Content-Type", "text/csv;charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="bulk_${batch.name.replace(/\s+/g, "_")}_${b.filter ?? "all"}.csv"`);
   res.send(csv);
@@ -575,54 +575,54 @@ gnBulkRouter.get("/gn/bulk/template/:type", requirePerm("gn.bulk.view"), asyncH(
 
 gnBulkRouter.post("/gn/bulk/demo", requirePerm("gn.bulk.create"), asyncH(async (req: AuthedRequest, res) => {
   const t = T(req);
-  const id = run(
+  const id = (await run(
     `INSERT INTO gn_bulk_batches (tenant_id, name, description, source, loan_type, assigned_team, priority, mode, status, is_demo, created_by)
      VALUES (?, '500 Applicant Demo Batch', 'Generated relational demo batch — 300 PL · 100 BL · 50 HL · 25 LAP · 15 Vehicle · 10 Equipment (DEMO / SANDBOX)', 'Demo', 'Mixed', 'Demo Processing Team', 'high', 'assisted', 'uploaded', 1, ?)`,
     [t, req.user!.id]
-  ).lastId;
+  )).lastId;
   const rows = generateDemoRows(id);
   for (const r of rows) {
-    run(
+    await run(
       "INSERT INTO gn_bulk_rows (tenant_id, batch_id, row_no, raw, mapped, status) VALUES (?, ?, ?, ?, ?, 'pending')",
       [t, id, r.row_no, JSON.stringify(r), JSON.stringify(r)]
     );
   }
-  run("UPDATE gn_bulk_batches SET total_rows = ? WHERE id = ?", [rows.length, id]);
+  await run("UPDATE gn_bulk_batches SET total_rows = ? WHERE id = ?", [rows.length, id]);
   // validate
-  for (const row of q<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE batch_id = ?", [id])) {
+  for (const row of await q<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE batch_id = ?", [id])) {
     const mapped = safeJson(row.mapped, {});
     const { errors, missing: isMissing } = validateRow(mapped);
-    run("UPDATE gn_bulk_rows SET validation = ?, status = ?, error = ? WHERE id = ?",
+    await run("UPDATE gn_bulk_rows SET validation = ?, status = ?, error = ? WHERE id = ?",
       [JSON.stringify(errors), errors.length === 0 ? "valid" : isMissing ? "missing" : "invalid", errors.length ? errors.map((e) => e.error).join("; ") : null, row.id]);
-    for (const e of errors) bulkError(t, id, row.id, "invalid_data", `Row ${row.row_no}: ${e.field} — ${e.error}`, `Correct the ${e.field} value in row ${row.row_no}`);
+    for (const e of errors) await bulkError(t, id, row.id, "invalid_data", `Row ${row.row_no}: ${e.field} — ${e.error}`, `Correct the ${e.field} value in row ${row.row_no}`);
   }
   // dedupe
   const seenMobiles = new Map<string, number>();
   const seenPans = new Map<string, number>();
   let dupN = 0;
-  for (const row of q<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE batch_id = ? AND status = 'valid' ORDER BY row_no", [id])) {
+  for (const row of await q<Record<string, any>>("SELECT * FROM gn_bulk_rows WHERE batch_id = ? AND status = 'valid' ORDER BY row_no", [id])) {
     const mapped = safeJson(row.mapped, {});
     const mobile = normMobile(mapped.mobile);
     const pan = mapped.pan ? String(mapped.pan).toUpperCase() : null;
     const inBatch = mobile && seenMobiles.has(mobile) ? `Row ${seenMobiles.get(mobile)} has the same mobile ${mobile}` : pan && seenPans.has(pan) ? `Row ${seenPans.get(pan)} has the same PAN ${pan}` : null;
     if (inBatch) {
       dupN++;
-      run("UPDATE gn_bulk_rows SET status = 'duplicate', error = ? WHERE id = ?", [inBatch, row.id]);
-      bulkError(t, id, row.id, "duplicate", `Row ${row.row_no}: ${inBatch}`, "Create a new application for this existing customer instead");
+      await run("UPDATE gn_bulk_rows SET status = 'duplicate', error = ? WHERE id = ?", [inBatch, row.id]);
+      await bulkError(t, id, row.id, "duplicate", `Row ${row.row_no}: ${inBatch}`, "Create a new application for this existing customer instead");
       continue;
     }
     if (mobile) seenMobiles.set(mobile, row.row_no);
     if (pan) seenPans.set(pan, row.row_no);
   }
-  const counts = q1<Record<string, any>>(
+  const counts = await q1<Record<string, any>>(
     `SELECT SUM(CASE WHEN status = 'valid' THEN 1 ELSE 0 END) AS valid,
        SUM(CASE WHEN status = 'invalid' THEN 1 ELSE 0 END) AS invalid,
        SUM(CASE WHEN status = 'missing' THEN 1 ELSE 0 END) AS missing,
        SUM(CASE WHEN status = 'duplicate' THEN 1 ELSE 0 END) AS duplicates
      FROM gn_bulk_rows WHERE batch_id = ?`, [id])!;
-  run("UPDATE gn_bulk_batches SET status = 'validated', valid = ?, invalid = ?, missing = ?, duplicates = ? WHERE id = ?",
+  await run("UPDATE gn_bulk_batches SET status = 'validated', valid = ?, invalid = ?, missing = ?, duplicates = ? WHERE id = ?",
     [counts.valid ?? 0, counts.invalid ?? 0, counts.missing ?? 0, dupN, id]);
-  const out = processBulkBatch(t, id, req.user!.id);
-  audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.demo", entityType: "gn_bulk_batch", entityId: id, after: { rows: rows.length, ...out }, ip: clientIp(req) });
+  const out = await processBulkBatch(t, id, req.user!.id);
+  await audit({ tenantId: t, userId: req.user!.id, action: "gn.bulk.demo", entityType: "gn_bulk_batch", entityId: id, after: { rows: rows.length, ...out }, ip: clientIp(req) });
   res.json({ batchId: id, rows: rows.length, ...counts, processing: out });
 }));

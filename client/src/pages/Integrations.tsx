@@ -70,7 +70,7 @@ export default function Integrations() {
       <div className="mt-5 flex items-start gap-2 text-[11.5px] text-zinc-500 bg-white border border-zinc-200 rounded-lg px-4 py-3">
         <Plug2 size={14} className="text-brand-500 shrink-0 mt-0.5" />
         <span>
-          All providers run through the NEXUS adapter abstraction (e.g. <code className="text-[10.5px] bg-zinc-100 px-1 rounded">CreditService → CIBIL/Experian/Equifax/CRIF/MockCreditAdapter</code>).
+          All providers run through the SNIPER adapter abstraction (e.g. <code className="text-[10.5px] bg-zinc-100 px-1 rounded">CreditService → CIBIL/Experian/Equifax/CRIF/MockCreditAdapter</code>).
           In this demo every integration is <Badge status="sandbox">SANDBOX</Badge> — no live provider is queried and no external credential is stored.
         </span>
       </div>

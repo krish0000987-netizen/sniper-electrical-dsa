@@ -78,7 +78,7 @@ function Protected({ children }: { children: React.ReactNode }) {
       <div className="h-screen flex items-center justify-center bg-[#f6f6f7]">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-md bg-brand-600 animate-pulse" />
-          <span className="text-[13px] text-zinc-500 font-medium">Loading NEXUS…</span>
+          <span className="text-[13px] text-zinc-500 font-medium">Loading SNIPER…</span>
         </div>
       </div>
     );

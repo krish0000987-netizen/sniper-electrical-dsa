@@ -21,7 +21,7 @@ const SUGGESTIONS = [
 export default function AI() {
   const [msgs, setMsgs] = useState<Msg[]>([{
     role: "ai",
-    text: "Welcome to the NEXUS AI Command Center. Ask me about your pipeline, portfolio, overdue accounts or collections.",
+    text: "Welcome to the SNIPER AI Command Center. Ask me about your pipeline, portfolio, overdue accounts or collections.",
     result: null
   }]);
   const [input, setInput] = useState("");
@@ -51,7 +51,7 @@ export default function AI() {
 
   return (
     <div>
-      <PageHeader title="NEXUS AI Command Center" sub="Search, summarize, analyze and recommend — always advisory, human decision required" breadcrumb="Intelligence / AI" />
+      <PageHeader title="SNIPER AI Command Center" sub="Search, summarize, analyze and recommend — always advisory, human decision required" breadcrumb="Intelligence / AI" />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         <div className="xl:col-span-2">
@@ -59,7 +59,7 @@ export default function AI() {
             <div className="flex items-center gap-2.5 pb-3 border-b border-zinc-100 mb-3">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-600 to-violet-600 text-white flex items-center justify-center"><BrainCircuit size={15} /></div>
               <div>
-                <div className="text-[13px] font-semibold text-zinc-900">NEXUS AI</div>
+                <div className="text-[13px] font-semibold text-zinc-900">SNIPER AI</div>
                 <div className="text-[10.5px] text-zinc-400">Rule-informed analytics over your live data</div>
               </div>
               <Badge status="sandbox">ADVISORY</Badge>
@@ -107,7 +107,7 @@ export default function AI() {
             <div className="flex items-center gap-2 pt-3 border-t border-zinc-100 mt-3">
               <input
                 className="input flex-1"
-                placeholder="Ask NEXUS AI…  e.g. “What needs my attention today?”"
+                placeholder="Ask SNIPER AI…  e.g. “What needs my attention today?”"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && ask()}

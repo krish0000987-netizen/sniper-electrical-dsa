@@ -16,12 +16,12 @@ export const Footer: React.FC = () => {
               Ready to Upgrade Your Lending Stack?
             </h3>
             <p className="text-slate-300 text-sm">
-              Deploy NEXUS on-premise or dedicated Cloud Run container with zero vendor lock-in.
+              Deploy SNIPER on-premise or dedicated Cloud Run container with zero vendor lock-in.
             </p>
           </div>
           <div className="flex items-center gap-3">
             <a
-              href="#nexus-ai"
+              href="#sniper-ai"
               className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg hover:shadow-blue-500/25 cursor-pointer"
             >
               LAUNCH INTERACTIVE DEMO
@@ -47,13 +47,13 @@ export const Footer: React.FC = () => {
               N
             </div>
             <div>
-              <span className="font-extrabold text-lg tracking-tight text-white">NEXUS</span>
+              <span className="font-extrabold text-lg tracking-tight text-white">SNIPER</span>
               <span className="text-[10px] font-mono text-blue-400 block -mt-1 uppercase tracking-widest">LENDING OS</span>
             </div>
           </div>
 
           <p className="text-slate-400 text-xs leading-relaxed max-w-sm">
-            NEXUS is India's unified lending operating system powering Banks, NBFCs, and Digital Fintech Lenders across MSME, Personal, LAP, and Gold Loan products.
+            SNIPER is India's unified lending operating system powering Banks, NBFCs, and Digital Fintech Lenders across MSME, Personal, LAP, and Gold Loan products.
           </p>
 
           <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono pt-2">
@@ -94,7 +94,7 @@ export const Footer: React.FC = () => {
             <li><a href="#compliance" className="hover:text-blue-400 transition-colors">RBI Compliance</a></li>
             <li><a href="#risk" className="hover:text-blue-400 transition-colors">Early Warning EWS</a></li>
             <li><a href="#ecosystem" className="hover:text-blue-400 transition-colors">50+ API Integrations</a></li>
-            <li><a href="#nexus-ai" className="hover:text-blue-400 transition-colors">NEXUS AI Copilot</a></li>
+            <li><a href="#sniper-ai" className="hover:text-blue-400 transition-colors">SNIPER AI Copilot</a></li>
           </ul>
         </div>
 
@@ -103,7 +103,7 @@ export const Footer: React.FC = () => {
       {/* Bottom Bar */}
       <div className="border-t border-slate-900 py-6 text-center md:flex md:items-center md:justify-between max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-[11px] text-slate-500 font-mono">
         <div>
-          © 2026 NEXUS Lending Technologies India Pvt Ltd. All rights reserved.
+          © 2026 SNIPER Lending Technologies India Pvt Ltd. All rights reserved.
         </div>
         <div className="mt-2 md:mt-0 flex items-center justify-center gap-6">
           <span className="hover:text-slate-400 transition-colors">ISO 27001 Certified</span>

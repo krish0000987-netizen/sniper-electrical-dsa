@@ -73,7 +73,7 @@ export default function Loans() {
           searchPlaceholder="Search by loan no, customer, mobile…"
           onSearch={(v) => { setQ(v); setPage(1); }}
           onRowClick={(r) => nav(`/loans/${r.id}`)}
-          exportName="nexus-loans"
+          exportName="sniper-loans"
         />
       </Card>
     </div>
