@@ -1583,7 +1583,7 @@ export async function resetSchema() {
   ];
   await db().exec("PRAGMA foreign_keys = OFF;");
   for (const t of tables) {
-    await db().exec(`DROP TABLE IF EXISTS ${t};`);
+    await db().exec(`DROP TABLE IF EXISTS ${t} CASCADE;`);
   }
   await createSchema();
   await db().exec("PRAGMA foreign_keys = ON;");

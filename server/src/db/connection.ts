@@ -44,12 +44,12 @@ function sqliteToPgSql(sql: string): string {
 export function translateSql(sql: string): string {
   let s = sql.trim();
   
-  // Translate SQLite datetime('now') and modifiers
-  s = s.replace(/datetime\('now'\)/gi, "CURRENT_TIMESTAMP");
-  s = s.replace(/datetime\('now',\s*'([^']+)'\)/gi, (match, interval) => {
+  // Translate SQLite datetime('now') / date('now') and modifiers
+  s = s.replace(/(?:datetime|date)\('now'\)/gi, "CURRENT_TIMESTAMP");
+  s = s.replace(/(?:datetime|date)\('now',\s*'([^']+)'\)/gi, (match, interval) => {
     return `CURRENT_TIMESTAMP + INTERVAL '${interval}'`;
   });
-  s = s.replace(/datetime\('now',\s*([^)]+)\)/gi, (match, val) => {
+  s = s.replace(/(?:datetime|date)\('now',\s*([^)]+)\)/gi, (match, val) => {
     if (val.trim() === "?") {
       return `CURRENT_TIMESTAMP + CAST(? AS INTERVAL)`;
     }
@@ -84,6 +84,9 @@ export function translateSql(sql: string): string {
 
   // Replace sqlite_master with pg_tables
   s = s.replace(/sqlite_master/gi, "pg_tables");
+
+  // Translate SQLite scalar MAX(0, ...) to PostgreSQL GREATEST(0, ...)
+  s = s.replace(/\bMAX\s*\(\s*0\s*,\s*/gi, "GREATEST(0, ");
 
   // Convert parameters ? to $1, $2, ...
   s = sqliteToPgSql(s);

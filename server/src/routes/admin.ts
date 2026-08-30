@@ -207,7 +207,7 @@ adminRouter.post("/workflow/save", requirePerm("admin.rules"), asyncH(async (req
     })).min(2)
   }).parse(req.body);
   const productId = body.product_id ?? null;
-  await run("UPDATE workflow_stages SET active = 0 WHERE tenant_id = ? AND product_id IS ?", [req.user!.tenant_id, productId]);
+  await run("UPDATE workflow_stages SET active = 0 WHERE tenant_id = ? AND (product_id = ? OR (product_id IS NULL AND CAST(? AS integer) IS NULL))", [req.user!.tenant_id, productId, productId]);
   for (const [i, s] of body.stages.entries()) {
     await run("INSERT INTO workflow_stages (tenant_id, product_id, code, name, seq, required_fields, required_documents, sla_hours, approver_role, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
       [req.user!.tenant_id, productId, s.code, s.name, i + 1, JSON.stringify(s.required_fields ?? []), JSON.stringify(s.required_documents ?? []), s.sla_hours, s.approver_role ?? null]);

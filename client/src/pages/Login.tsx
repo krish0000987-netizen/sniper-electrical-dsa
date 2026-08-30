@@ -4,18 +4,18 @@ import { ShieldCheck, AlertTriangle, Loader2 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 
 const DEMO_USERS = [
-  { email: "admin@sniper.demo", label: "Admin", desc: "Full platform access" },
-  { email: "credit@sniper.demo", label: "Credit", desc: "Underwriting & approvals" },
-  { email: "collections@sniper.demo", label: "Collections", desc: "Recovery & PTPs" },
-  { email: "dsa@sniper.demo", label: "DSA", desc: "Lead & application intake" },
-  { email: "sales@sniper.demo", label: "Sales", desc: "CRM & pipeline" },
-  { email: "customer@sniper.demo", label: "Customer", desc: "Customer portal" }
+  { email: "admin@nexus.demo", label: "Admin", desc: "Full platform access" },
+  { email: "credit@nexus.demo", label: "Credit", desc: "Underwriting & approvals" },
+  { email: "collections@nexus.demo", label: "Collections", desc: "Recovery & PTPs" },
+  { email: "dsa@nexus.demo", label: "DSA", desc: "Lead & application intake" },
+  { email: "sales@nexus.demo", label: "Sales", desc: "CRM & pipeline" },
+  { email: "customer@nexus.demo", label: "Customer", desc: "Customer portal" }
 ];
 
 export default function Login() {
   const { login } = useAuth();
   const nav = useNavigate();
-  const [email, setEmail] = useState("admin@sniper.demo");
+  const [email, setEmail] = useState("admin@nexus.demo");
   const [password, setPassword] = useState("demo1234");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);

@@ -19,11 +19,11 @@ Open **http://localhost:5173** and sign in with any demo account (password `demo
 
 | Account | Role |
 |---|---|
-| `admin@sniper.demo` | Super Admin — full platform |
-| `credit@sniper.demo` | Credit Manager — underwriting & approvals |
-| `collections@sniper.demo` | Collection Manager — recovery & PTPs |
-| `dsa@sniper.demo` | DSA Partner — lead & application intake |
-| `sales@sniper.demo` | Sales Manager — CRM & pipeline |
+| `admin@nexus.demo` | Super Admin — full platform |
+| `credit@nexus.demo` | Credit Manager — underwriting & approvals |
+| `collections@nexus.demo` | Collection Manager — recovery & PTPs |
+| `dsa@nexus.demo` | DSA Partner — lead & application intake |
+| `sales@nexus.demo` | Sales Manager — CRM & pipeline |
 
 ## Demo journey (fully connected)
 

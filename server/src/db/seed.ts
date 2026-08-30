@@ -250,7 +250,7 @@ export async function seed() {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
         [tenantId, pick(rng, branchIds), "LD" + String(1000 + i), `${pick(rng, MALE)} ${pick(rng, LAST)}`,
          "9" + String(100000000 + Math.floor(rng() * 899999999)), `lead${i}@gmail.com`, loc.city, loc.state,
-         pick(rng, LOAN_TYPES), amount, income, income * (10 + rng() * 30), source,
+         pick(rng, LOAN_TYPES), amount, income, Math.round(income * (10 + rng() * 30)), source,
          pick(rng, ["Summer Campaign", "Festival Offer", "Business Drive", "WhatsApp Blast", null, null, null]),
          rng() < 0.5 ? pick(rng, dsaIds) : null, rng() < 0.6 ? pick(rng, salesIds) : null, status,
          pick(rng, ["Call back", "Send WhatsApp", "Collect documents", "Schedule visit", "Share KFS", null]),
