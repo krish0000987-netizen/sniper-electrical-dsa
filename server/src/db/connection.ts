@@ -48,6 +48,15 @@ const pool = new pg.Pool({
   ...(TEST_SCHEMA ? { options: `-c search_path=${TEST_SCHEMA}` } : {})
 });
 
+// An idle-client error (e.g. the database restarts or a pooled connection is
+// killed) emits on the Pool itself; without a listener that is an unhandled
+// 'error' event, which crashes serverless processes mid-request and surfaces
+// as FUNCTION_INVOCATION_FAILED. Log it and let individual queries fail
+// instead. (Queries themselves surface the same problem via their promises.)
+pool.on("error", (err) => {
+  console.error("[db] pooled connection error:", err.message);
+});
+
 const transactionStorage = new AsyncLocalStorage<pg.PoolClient>();
 
 async function getClient(): Promise<pg.Pool | pg.PoolClient> {

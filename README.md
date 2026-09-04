@@ -73,18 +73,28 @@ npm run dev:server  # API only
 npm run dev:client  # web only
 ```
 
-## Deploying on Vercel (demo)
+## Deploying on Vercel
 
-The repo has two deployables (npm workspaces). Serverless hosts have a read-only
-filesystem except `/tmp`, and the SQLite DB is **ephemeral there** — it is
-re-provisioned from a committed demo snapshot on every cold start. That is
-expected for the demo environment; persistent storage would need a hosted
-Postgres instead.
+The repo has two deployables (npm workspaces). The API targets **hosted
+Postgres** (`DATABASE_URL` — Neon/Supabase/RDS), not a local file. Serverless
+functions boot the module on every cold start under a hard invocation budget
+(Hobby default ≈ 10 s), so nothing slow may run at boot.
 
-- **API** — Vercel project rooted at `server/` (Express preset, entry `src/index.ts`).
-  - Requires Node ≥ 22.13 for `node:sqlite`; pinned via `"engines": { "node": "22.x" }` in `server/package.json`.
-  - `server/src/db/connection.ts` copies the committed demo DB (`server/demo-data/sniper.db`, ~11 MB) into `/tmp/sniper` on cold start — milliseconds, not the ~11 s reseed — and falls back to on-boot seeding if the file isn't bundled. `SNIPER_DB` always overrides.
-  - Health check: `GET /api/health`.
+- **API** — Vercel project rooted at `server/` (Express preset; the module
+  default export in `src/app.ts` is the Express app — `src/index.ts` is only
+  for `npm run dev`).
+  - **Before first deploy**: point `DATABASE_URL` at the hosted Postgres and
+    seed it once out-of-band — `DATABASE_URL=... npm run seed -w server`.
+    Boot-time demo seeding takes 20–30 s and **will time out a serverless
+    invocation** (→ 500 `FUNCTION_INVOCATION_FAILED`); on Vercel it is skipped
+    automatically.
+  - Env: `DATABASE_URL`, `DATABASE_SSL=true` (auto-detected for remote hosts),
+    shared `NEXUS_AUTH_SECRET`. Optional: `DATABASE_SKIP_SCHEMA=true` after the
+    first successful boot to skip per-cold-start DDL; `DATABASE_AUTO_SEED=true`
+    to force boot-seeding back on.
+  - If the database is unreachable/unprovisioned at boot the module degrades
+    to a 503 "database not provisioned" app instead of crashing — check
+    `/api/health` and the function logs to tell the two apart.
 - **Web app** — Vercel project rooted at `client/` (Vite preset, `npm run build`).
   Set `VITE_API_BASE` to the API origin (e.g. `https://loanserver.vercel.app`) so the
   built app calls the hosted API; leave it unset locally (Vite proxies `/api` → `:8787`).

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Plug2, CheckCircle2, FlaskConical, XCircle, CircleDashed, Hourglass, ShieldOff, Play, Loader2 } from "lucide-react";
-import { api } from "../lib/api";
+import { Plug2, CheckCircle2, FlaskConical, XCircle, CircleDashed, Hourglass, ShieldOff, Play, Loader2, RefreshCw, AlertTriangle } from "lucide-react";
+import { api, ApiError } from "../lib/api";
 import { PageHeader, Card, CardTitle } from "../components/ui";
 
 const CATEGORIES = ["identity", "credit", "business", "banking", "payments", "documents", "communication"];
@@ -37,7 +37,22 @@ export default function Integrations() {
   const [env, setEnv] = useState<any>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null);
-  const load = () => api<any>("/admin/integrations").then((d) => { setRows(d.rows); setCounts(d.counts); setEnv(d.env); });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const load = () => {
+    setLoading(true);
+    return api<any>("/admin/integrations")
+      .then((d) => {
+        // The hub API returns { rows, counts, env }. A bare array means the
+        // connected API runs the pre-hub code — surface that instead of a blank page.
+        if (!d || !Array.isArray(d.rows)) {
+          throw new ApiError(0, "The connected API is running an older version without the Integration Hub. Redeploy the API from the latest code (same repo/branch as this client) and reload.");
+        }
+        setRows(d.rows); setCounts(d.counts ?? {}); setEnv(d.env ?? null); setError(null);
+      })
+      .catch((e: any) => { setError(e?.message || "Failed to load integrations — check that the API is running."); setRows([]); setCounts({}); setEnv(null); })
+      .finally(() => setLoading(false));
+  };
   useEffect(() => { load(); }, []);
 
   const flash = (ok: boolean, text: string) => { setToast({ ok, text }); setTimeout(() => setToast(null), 8000); };
@@ -59,7 +74,7 @@ export default function Integrations() {
     finally { setBusyId(null); }
   };
 
-  const grouped = CATEGORIES.map((cat) => ({ cat, items: rows.filter((r) => r.code && r.category === cat) }));
+  const grouped = CATEGORIES.map((cat) => ({ cat, items: (rows || []).filter((r) => r.code && r.category === cat) }));
   return (
     <div>
       <PageHeader title="Integration Hub" sub="One centralized adapter layer — every external provider replaceable" breadcrumb="Platform / Integrations" />
@@ -81,6 +96,22 @@ export default function Integrations() {
       {toast && (
         <div className={`mb-4 text-[12px] rounded-lg border px-3 py-2 ${toast.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
           {toast.text}
+        </div>
+      )}
+
+      {loading && (
+        <div className="mb-4 flex items-center gap-2 text-[12px] text-zinc-500 bg-white border border-zinc-200 rounded-lg px-4 py-3">
+          <Loader2 size={14} className="animate-spin text-brand-500" /> Loading integration adapters…
+        </div>
+      )}
+
+      {error && !loading && (
+        <div className="mb-4 text-[12px] rounded-lg border border-rose-200 bg-rose-50 text-rose-700 px-4 py-3 flex items-start gap-2.5">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+          <div className="flex-1">{error}</div>
+          <button className="flex items-center gap-1.5 text-rose-700 font-semibold cursor-pointer hover:underline shrink-0" onClick={load}>
+            <RefreshCw size={12} /> Retry
+          </button>
         </div>
       )}
 
