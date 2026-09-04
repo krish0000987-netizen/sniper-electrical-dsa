@@ -25,7 +25,10 @@ export default function ApplicationWorkspace() {
   useEffect(() => { if (data) setDecide((d: any) => ({ ...d, approved_amount: data.app.approved_amount || data.app.requested_amount })); }, [data?.app?.id]);
 
   if (!data) return null;
-  const { app, stages, documents, bureau, bank, gst, evaluations, ctx, rules, sanction, kfs, agreements, existingLoans, approvals } = data;
+  const { app, stages, documents, bureau, bank, gst, evaluations, ctx, rules, sanction, kfs, agreements, existingLoans, approvals, hub } = data;
+  const panHub = hub?.panVerify;
+  const panLive = panHub?.mode === "live" && panHub?.effectiveStatus === "connected";
+  const panLiveIntent = panHub?.mode === "live" && !panLive && panHub?.credentialsConfigured && panHub?.effectiveStatus !== "error";
 
   const act = async (action: string, fn: () => Promise<any>, okMsg?: string) => {
     setBusy(action);
@@ -170,10 +173,10 @@ export default function ApplicationWorkspace() {
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400 mb-2">Stage actions</div>
                 <div className="flex flex-wrap gap-2">
                   {app.stage === "kyc" && (
-                    <button className="btn btn-primary" disabled={!!busy} onClick={() => act("kyc", () => api(`/applications/${app.id}/kyc`, { method: "POST", body: { type: "pan" } }), "KYC verification completed (mock)")}><Fingerprint size={13} /> {busy === "kyc" ? "Checking…" : "Verify KYC (sandbox)"}</button>
+                    <button className="btn btn-primary" disabled={!!busy} onClick={() => act("kyc", () => api(`/applications/${app.id}/kyc`, { method: "POST", body: { type: "pan" } }), panLive ? "PAN verified via Digitap" : panLiveIntent ? "KYC request sent (Digitap pending enablement)" : "KYC verification completed (sandbox)")}><Fingerprint size={13} /> {busy === "kyc" ? "Checking…" : panLive ? "Verify PAN (Digitap)" : panLiveIntent ? "Verify PAN (pending Digitap)" : "Verify KYC (sandbox)"}</button>
                   )}
                   {(app.stage === "credit" || app.stage === "banking" || app.stage === "gst") && (
-                    <button className="btn btn-primary" disabled={!!busy} onClick={() => act("credit", () => api(`/applications/${app.id}/credit`, { method: "POST" }), "Credit data fetched (mock bureau + bank + GST)")}><RefreshCw size={13} /> {busy === "credit" ? "Fetching…" : "Fetch credit data (sandbox)"}</button>
+                    <button className="btn btn-primary" disabled={!!busy} onClick={() => act("credit", () => api(`/applications/${app.id}/credit`, { method: "POST" }), "Credit data fetched (sandbox adapters)")}><RefreshCw size={13} /> {busy === "credit" ? "Fetching…" : "Fetch credit data (sandbox)"}</button>
                   )}
                   {app.stage === "bre" && (
                     <button className="btn btn-primary" disabled={!!busy} onClick={() => act("bre", () => api(`/applications/${app.id}/bre`, { method: "POST" }), "Rules engine evaluated")}><Scale size={13} /> {busy === "bre" ? "Evaluating…" : "Run business rules"}</button>

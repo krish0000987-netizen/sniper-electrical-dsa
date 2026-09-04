@@ -52,7 +52,7 @@ gnCoRouter.get("/gn/co/overview", requirePerm("gn.co.view"), asyncH(async (req: 
   const byLender = await q<Record<string, any>>(
     `SELECT d.lender_id, l.name AS lender_name, COUNT(*) AS n, COALESCE(SUM(d.amount), 0) AS amount
      FROM gn_disbursements d JOIN gn_lenders l ON l.id = d.lender_id
-     WHERE d.tenant_id = ? AND d.status = 'completed' GROUP BY d.lender_id ORDER BY amount DESC LIMIT 6`, [t]);
+     WHERE d.tenant_id = ? AND d.status = 'completed' GROUP BY d.lender_id, l.name ORDER BY amount DESC LIMIT 6`, [t]);
   const recent = await q<Record<string, any>>(
     `SELECT a.id, a.ref, a.name, a.loan_type, a.loan_amount, a.app_status, a.kyc_status, a.match_status, a.credit_score, a.created_at
      FROM gn_applicants a WHERE a.tenant_id = ? ORDER BY a.id DESC LIMIT 8`, [t]);
@@ -310,14 +310,14 @@ gnCoRouter.get("/gn/co/analytics", requirePerm("gn.co.view"), asyncH(async (req:
   const byLender = await q<Record<string, any>>(
     `SELECT l.name AS lender, COUNT(d.id) AS n, COALESCE(SUM(d.amount), 0) AS amount
      FROM gn_disbursements d JOIN gn_lenders l ON l.id = d.lender_id WHERE d.tenant_id = ? AND d.status = 'completed'
-     GROUP BY l.id ORDER BY amount DESC`, [t]);
+     GROUP BY l.id, l.name ORDER BY amount DESC`, [t]);
   const byProduct = await q<Record<string, any>>(
     `SELECT loan_type AS product, COUNT(*) AS n, COALESCE(SUM(loan_amount), 0) AS amount
      FROM gn_applicants WHERE tenant_id = ? AND app_status != 'none' GROUP BY loan_type ORDER BY n DESC`, [t]);
   const byPartner = await q<Record<string, any>>(
     `SELECT p.name AS partner, COUNT(a.id) AS n, COALESCE(SUM(a.disbursed_amount), 0) AS amount
      FROM gn_applications a JOIN gn_partners p ON p.id = a.partner_id WHERE a.tenant_id = ? AND a.disbursed_amount > 0
-     GROUP BY p.id ORDER BY amount DESC LIMIT 8`, [t]);
+     GROUP BY p.id, p.name ORDER BY amount DESC LIMIT 8`, [t]);
   const revenue = await q1<Record<string, any>>(
     `SELECT COUNT(*) AS n, COALESCE(SUM(disbursed_amount), 0) AS disbursed, COALESCE(SUM(gross), 0) AS gross,
        COALESCE(SUM(partner_share), 0) AS partner_share, COALESCE(SUM(gn_share), 0) AS gn_share

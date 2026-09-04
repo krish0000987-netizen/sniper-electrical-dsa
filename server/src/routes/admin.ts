@@ -6,6 +6,7 @@ import { hashPassword, ROLES, ROLE_LABELS } from "../core/auth.js";
 import { asyncH, authRequired, clientIp, requirePerm, type AuthedRequest } from "../middleware.js";
 import { evaluateRuleSet, renderCondition, type BreRule } from "../core/bre.js";
 import { buildApplicationContext } from "../core/ctx.js";
+import { CATALOG_BY_CODE, buildIntegrationView, parseRowConfig, digitapConfig, probePanBasic as probeDigitapPanBasic } from "../adapters/index.js";
 
 export const adminRouter = Router();
 adminRouter.use(authRequired);
@@ -214,22 +215,72 @@ adminRouter.post("/workflow/save", requirePerm("admin.rules"), asyncH(async (req
   }
   await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "admin.workflow_save", entityType: "workflow", entityId: productId ?? 0, after: { product_id: productId, stages: body.stages.map((s) => s.code) }, ip: clientIp(req) });
   res.json({ ok: true, saved: body.stages.length });
-}));
-
-/* ---------- INTEGRATIONS ---------- */
-
+}));/* ---------- INTEGRATIONS ---------- */
 adminRouter.get("/integrations", requirePerm("admin.integrations"), asyncH(async (req: AuthedRequest, res) => {
-  const rows = await q("SELECT * FROM integrations WHERE tenant_id = ? ORDER BY category, id", [req.user!.tenant_id]);
-  res.json(rows);
+const rows = await q("SELECT * FROM integrations WHERE tenant_id = ? ORDER BY category, id", [req.user!.tenant_id]);
+const views = rows.map(buildIntegrationView);
+res.json({
+rows: views,
+counts: {
+connected: views.filter((v) => v.effectiveStatus === "connected").length,
+sandbox: views.filter((v) => v.effectiveStatus === "sandbox").length,
+error: views.filter((v) => v.effectiveStatus === "error").length,
+not_configured: views.filter((v) => v.effectiveStatus === "not_configured").length,
+awaiting_enablement: views.filter((v) => v.effectiveStatus === "awaiting_enablement").length
+},
+env: {
+provider: "Digitap",
+digitapEnv: digitapConfig().env,
+digitapCredentials: digitapConfig().creds ? "configured" : "missing",
+note: "PAN Basic is wired and Test-ready; the supplied UAT pair returns 401 on valid-format probes — confirm the correct pair with Digitap, then click Test. Other suites go live as Digitap enables them on this client and we receive their API docs."
+}
+});
 }));
-
+/** Switch an adapter's driving mode. "live" never fabricates "connected": the
+ * computed effectiveStatus decides what the hub shows after a probe. */
 adminRouter.patch("/integrations/:id", requirePerm("admin.integrations"), asyncH(async (req: AuthedRequest, res) => {
-  const body = z.object({ status: z.enum(["connected", "sandbox", "error", "not_configured"]), provider: z.string().optional() }).parse(req.body);
-  const before = await q1("SELECT * FROM integrations WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
-  if (!before) { res.status(404).json({ error: "Integration not found" }); return; }
-  await run("UPDATE integrations SET status = ?, provider = COALESCE(?, provider) WHERE id = ?", [body.status, body.provider ?? null, before.id]);
-  await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "admin.integration_update", entityType: "integration", entityId: before.id, before, after: body, ip: clientIp(req) });
-  res.json(await q1("SELECT * FROM integrations WHERE id = ?", [before.id]));
+const body = z.object({
+mode: z.enum(["mock", "live"]).optional(),
+status: z.string().optional(),
+provider: z.string().optional()
+}).parse(req.body);
+const before = await q1<Record<string, any>>("SELECT * FROM integrations WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
+if (!before) { res.status(404).json({ error: "Integration not found" }); return; }
+const adapter = CATALOG_BY_CODE.get(before.code);
+const cfg = parseRowConfig(before);
+const mode = body.mode ?? (cfg.mode === "live" ? "live" : "mock");
+const config = { ...cfg, mode, sandbox: mode !== "live" };
+const provider = body.mode === "live" ? "DIGITAP" : (body.provider ?? `MOCK-${before.code.toUpperCase()}`);
+await run("UPDATE integrations SET status = ?, provider = ?, config = ? WHERE id = ?",
+[mode === "live" ? "sandbox" : "sandbox", provider, JSON.stringify(config), before.id]);
+await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: `admin.integration_${mode}`, entityType: "integration", entityId: before.id, before, after: { mode, adapter: adapter?.name }, ip: clientIp(req) });
+res.json(buildIntegrationView({ ...before, status: "sandbox", provider, config: JSON.stringify(config) }));
+}));
+/** Test an adapter end-to-end. PAN Basic probes Digitap live (never billable);
+ * suites Digitap has not enabled yet report exactly that, without a network call. */
+adminRouter.post("/integrations/:id/test", requirePerm("admin.integrations"), asyncH(async (req: AuthedRequest, res) => {
+const row = await q1<Record<string, any>>("SELECT * FROM integrations WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
+if (!row) { res.status(404).json({ error: "Integration not found" }); return; }
+const adapter = CATALOG_BY_CODE.get(row.code);
+if (!adapter) { res.status(400).json({ error: "Unknown adapter code" }); return; }
+const t0 = Date.now();
+let outcome: { ok: boolean; message: string; detail?: string };
+if (adapter.excluded) {
+outcome = { ok: false, message: "This adapter is out of live scope (Payments / Communication excluded by design)." };
+} else if (row.code === "pan_verify") {
+const probe = await probeDigitapPanBasic();
+outcome = { ok: probe.ok, message: probe.message, detail: `env=${probe.auth ? digitapConfig().env.toUpperCase() : "—"} · latency ${probe.latencyMs}ms` };
+} else if (!adapter.digitap?.enabled) {
+outcome = { ok: false, message: `Awaiting Digitap enablement — ${adapter.digitap?.family ?? "unknown suite"} (${adapter.digitap?.product ?? row.code}). ${adapter.digitap?.note ?? ""}` };
+} else {
+outcome = { ok: false, message: "Adapter suite not yet wired to a live driver." };
+}
+const cfg = parseRowConfig(row);
+const config = { ...cfg, lastTest: new Date().toISOString(), lastTestOk: outcome.ok, lastTestMessage: outcome.message };
+await run("UPDATE integrations SET config = ?, status = ? WHERE id = ?",
+[JSON.stringify(config), outcome.ok ? (adapter.excluded ? row.status : "connected") : "error", row.id]);
+await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: `admin.integration_test`, entityType: "integration", entityId: row.id, after: { code: row.code, ok: outcome.ok, message: outcome.message }, ip: clientIp(req) });
+res.json({ ok: outcome.ok, message: outcome.message, detail: outcome.detail, latencyMs: Date.now() - t0 });
 }));
 
 /* ---------- AUDIT ---------- */

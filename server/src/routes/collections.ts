@@ -93,7 +93,7 @@ collectionsRouter.get("/collections/dashboard", requirePerm("collections.view"),
   const bucketDist = await q<Record<string, any>>(
     `SELECT CASE WHEN l.dpd = 0 THEN '0' WHEN l.dpd = 1 THEN '1-30' WHEN l.dpd = 2 THEN '31-60' WHEN l.dpd = 3 THEN '61-90' ELSE '90+' END AS bucket,
        COUNT(*) AS loans, COALESCE(SUM(l.outstanding), 0) AS outstanding
-     FROM loans l WHERE l.tenant_id = ? AND l.status NOT IN ('closed','written_off') GROUP BY bucket ORDER BY l.dpd`,
+     FROM loans l WHERE l.tenant_id = ? AND l.status NOT IN ('closed','written_off') GROUP BY bucket ORDER BY MIN(l.dpd)`,
     [t]);
   const agentPerformance = await q<Record<string, any>>(
     `SELECT u.name, COUNT(DISTINCT ct.id) AS tasks, SUM(CASE WHEN ct.status = 'done' THEN 1 ELSE 0 END) AS done,

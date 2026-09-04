@@ -1,4 +1,4 @@
-import { db } from "./connection.js";
+import { db, TEST_SCHEMA } from "./connection.js";
 
 /**
  * SNIPER schema — the platform's own domain model.
@@ -6,7 +6,16 @@ import { db } from "./connection.js";
  * through tenant-scoped helpers. No cross-tenant leakage by construction.
  */
 export async function createSchema() {
+  // Serialize concurrent schema boots. Tests run schema creation in parallel
+  // and serverless instances race on cold start; PG has no IF-NOT-EXISTS
+  // protection against a concurrent CREATE (pg_type collision). The advisory
+  // xact lock makes concurrent CREATE TABLE IF NOT EXISTS idempotent. The
+  // lock + DDL run as ONE multi-statement query so they share a connection.
   await db().exec(`
+  BEGIN;
+  SELECT pg_advisory_xact_lock(7936101);
+  ${TEST_SCHEMA ? `DROP SCHEMA IF EXISTS ${TEST_SCHEMA} CASCADE;
+  CREATE SCHEMA ${TEST_SCHEMA};` : ""}
   CREATE TABLE IF NOT EXISTS tenants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT UNIQUE NOT NULL,
@@ -560,7 +569,7 @@ export async function createSchema() {
     user_id INTEGER,
     action TEXT NOT NULL,
     entity_type TEXT,
-    entity_id INTEGER,
+    entity_id BIGINT,
     before TEXT,
     after TEXT,
     ip TEXT,
@@ -1560,6 +1569,7 @@ export async function createSchema() {
   CREATE INDEX IF NOT EXISTS idx_gn_timeline_app ON gn_application_timeline(app_id);
   CREATE INDEX IF NOT EXISTS idx_gn_commissions_tenant ON gn_commissions(tenant_id);
   CREATE INDEX IF NOT EXISTS idx_gn_partners_tenant ON gn_partners(tenant_id);
+  COMMIT;
   `);
 }
 

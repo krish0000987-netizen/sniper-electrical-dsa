@@ -10,7 +10,8 @@
     "start": "tsx src/index.ts",
     "seed": "tsx src/db/seed.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/test/*.test.ts"
+    "test": "tsx --test src/test/*.test.ts",
+    "test:hub": "tsx scripts/hub-smoke.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -1,4 +1,6 @@
-import { q, q1, run, tx } from "./connection.js";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { q, q1, run, tx, withSessionLock } from "./connection.js";
 import { createSchema, resetSchema } from "./schema.js";
 import { hashPassword } from "../core/auth.js";
 import { buildSchedule, computeEmi, computeDpd, allocatePayment, type AllocationComponent } from "../core/finance.js";
@@ -732,19 +734,28 @@ export async function seed() {
 }
 
 export async function seedIfEmpty() {
-  const any = await q1<{ n: number }>("SELECT COUNT(*) AS n FROM customers");
-  if (any && any.n > 0) return;
-  await seed();
+  // Session advisory lock: parallel boots (test runner processes, serverless
+  // cold starts against an empty DB) must not double-seed — the emptiness
+  // check and the seed itself need to be one atomic decision.
+  await withSessionLock(7936102, async () => {
+    const any = await q1<{ n: number }>("SELECT COUNT(*) AS n FROM customers");
+    if (any && any.n > 0) return;
+    await seed();
+  });
 }
 
-/* CLI entry: `npm run seed` (with `reset` to wipe and reseed). Importing this
-   module is harmless — seeding is guarded by the emptiness check. */
+/* CLI entry: `npm run seed` (with `reset` to wipe and reseed). Seeding must
+   NOT happen as an import side effect — app.ts calls seedIfEmpty() itself, and
+   a side-effect seed races it on a fresh database. */
 const argv = process.argv.slice(2);
-if (argv.includes("reset")) {
+const invokedDirectly = process.argv[1]
+  ? path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+  : false;
+if (invokedDirectly && argv.includes("reset")) {
   console.log("[NEXUS SEED] resetting database…");
   await resetSchema();
   await seed();
-} else {
+} else if (invokedDirectly) {
   await createSchema();
-  seedIfEmpty();
+  await seedIfEmpty();
 }

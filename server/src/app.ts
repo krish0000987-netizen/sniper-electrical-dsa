@@ -27,8 +27,11 @@ import { errorHandler } from "./middleware.js";
 /** Build the NEXUS API app. Schema creation and demo seeding run on first build. */
 export async function createApp() {
   await createSchema();
-  ensureDemoUsers();
-  seedIfEmpty();
+  await seedIfEmpty();
+  // Demo users reference tenant 1 and the seeded customer profile, so they are
+  // upserted after (not before) the demo seed. Seeding is a no-op on an
+  // already-populated database.
+  await ensureDemoUsers();
 
   const app = express();
   app.use(cors());

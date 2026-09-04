@@ -6,6 +6,8 @@ import { asyncH, authRequired, clientIp, requirePerm, type AuthedRequest } from 
 import { buildApplicationContext, capacityMetrics } from "../core/ctx.js";
 import { evaluateRuleSet, type BreRule } from "../core/bre.js";
 import { buildSchedule, computeApr, computeEmi, computeDpd, inrLakh } from "../core/finance.js";
+import { CATALOG_BY_CODE, parseRowConfig, buildIntegrationView, panVerify, DigitapError, toDigitapDob, maskPan, digitapConfig } from "../adapters/index.js";
+import { saveConsentRecord, logProviderRequest, saveVerificationResult } from "../db/supabase.js";
 
 export const losRouter = Router();
 losRouter.use(authRequired);
@@ -126,7 +128,9 @@ losRouter.get("/applications/:id", requirePerm("applications.view"), asyncH(asyn
   const ctx = await buildApplicationContext(app.id);
   const cap = capacityMetrics(ctx);
   const activeRules = await q("SELECT * FROM bre_rules WHERE tenant_id = ? AND status = 'active' ORDER BY priority", [req.user!.tenant_id]);
-  res.json({ app, stages, stageHistory, documents, bureau, bank, gst, evaluations, approvals, sanction, kfs, agreements, existingLoans, ctx: { ...ctx, capacity: cap }, rules: activeRules });
+  const panInt = await q1<Record<string, any>>("SELECT * FROM integrations WHERE tenant_id = ? AND code = 'pan_verify'", [req.user!.tenant_id]);
+  const hub = { panVerify: panInt ? buildIntegrationView(panInt) : null };
+  res.json({ app, stages, stageHistory, documents, bureau, bank, gst, evaluations, approvals, sanction, kfs, agreements, existingLoans, ctx: { ...ctx, capacity: cap }, rules: activeRules, hub });
 }));
 
 losRouter.patch("/applications/:id", requirePerm("applications.edit"), asyncH(async (req: AuthedRequest, res) => {
@@ -211,13 +215,28 @@ losRouter.post("/documents/:id/reject", requirePerm("applications.edit"), asyncH
   res.json(await q1("SELECT * FROM documents WHERE id = ?", [req.params.id]));
 }));
 
-/* ---------- CREDIT DATA (MOCK ADAPTERS) ---------- */
+/* ---------- CREDIT DATA (ADAPTER-DRIVEN: live providers once Digitap enables
+ * the bureau/BSA/GST suites; today only the labelled sandbox drivers exist) --- */
 
 losRouter.post("/applications/:id/credit", requirePerm("credit.fetch"), asyncH(async (req: AuthedRequest, res) => {
   const app = await q1<Record<string, any>>("SELECT * FROM applications WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
   if (!app) { res.status(404).json({ error: "Application not found" }); return; }
   const cust = await q1<Record<string, any>>("SELECT * FROM customers WHERE id = ?", [app.customer_id]);
   if (!cust) { res.status(404).json({ error: "Customer not found" }); return; }
+
+  // Registry gate: if an admin marked a bureau/BSA/GST adapter LIVE, never
+  // fabricate its data — report the honest enablement state instead.
+  const liveCodes: string[] = [];
+  const intRows = await q<Record<string, any>>("SELECT code, config FROM integrations WHERE tenant_id = ? AND code IN ('cibil','experian','equifax','crif','bank_statement','gst')", [req.user!.tenant_id]);
+  for (const r of intRows) if (parseRowConfig(r).mode === "live") liveCodes.push(r.code);
+  if (liveCodes.length) {
+    const blocked = liveCodes.map((c) => CATALOG_BY_CODE.get(c)?.name ?? c).join(", ");
+    res.status(422).json({
+      ok: false, sandbox: false, liveBlocked: liveCodes,
+      error: `${blocked} ${liveCodes.length > 1 ? "are" : "is"} set to live but Digitap has not enabled the suite yet — no data was fabricated. Run the hub Test or switch back to Sandbox.`
+    });
+    return;
+  }
   const rnd = prand(cust.id * 7919 + app.id * 104729);
 
   // Bureau (Mock-CIBIL adapter)
@@ -572,26 +591,94 @@ losRouter.post("/applications/:id/kyc", requirePerm("kyc.*"), asyncH(async (req:
   const app = await q1<Record<string, any>>("SELECT * FROM applications WHERE id = ? AND tenant_id = ?", [req.params.id, req.user!.tenant_id]);
   if (!app) { res.status(404).json({ error: "Application not found" }); return; }
   const cust = await q1<Record<string, any>>("SELECT * FROM customers WHERE id = ?", [app.customer_id]);
+  if (!cust) { res.status(404).json({ error: "Customer not found" }); return; }
+
+  // Consent is a precondition for every provider-backed KYC call (RBI DL-03 /
+  // KYC-01). Recorded in the CRM consent ledger and mirrored to Supabase.
   const consentId = (await run("INSERT INTO consents (tenant_id, customer_id, type, purpose, channel, status) VALUES (?, ?, 'kyc', ?, 'portal', 'active')",
     [req.user!.tenant_id, app.customer_id, `KYC verification via ${body.type.toUpperCase()}`])).lastId;
-  const rnd = prand(app.id * 31 + app.customer_id);
-  const verified = rnd() > 0.12;
-  const id = (await run(
-    `INSERT INTO kyc_records (tenant_id, customer_id, type, status, provider, reference_id, result, consent_id, verified_by, verified_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now', '+365 days'))`,
-    [req.user!.tenant_id, app.customer_id, body.type, verified ? "verified" : "failed", body.provider ?? `MOCK-${body.type.toUpperCase()}`,
-     "REF" + String(Math.floor(100000 + rnd() * 899999)), JSON.stringify({ match: verified ? 0.94 + rnd() * 0.05 : 0.4, name_match: verified }), consentId, req.user!.id]
-  )).lastId;
-  if (verified) {
+  await saveConsentRecord({ tenant_id: req.user!.tenant_id, customer_id: app.customer_id, purpose: `KYC verification via ${body.type.toUpperCase()}`, channel: "crm_portal", captured_by: req.user!.id, status: "active", payload: { application_id: app.id, consent_id: consentId } });
+
+  const advanceKyc = async () => {
     await run("UPDATE customers SET kyc_status = 'verified' WHERE id = ?", [app.customer_id]);
     if (app.stage === "kyc") {
       await run("UPDATE applications SET stage = 'documents', updated_at = datetime('now') WHERE id = ?", [app.id]);
       await run("UPDATE application_stages SET exited_at = datetime('now'), status = 'completed' WHERE application_id = ? AND stage = 'kyc'", [app.id]);
       await run("INSERT INTO application_stages (application_id, stage, entered_at, status) VALUES (?, 'documents', datetime('now'), 'in_progress')", [app.id]);
     }
+  };
+
+  /* ---------- LIVE PAN VERIFICATION (Digitap PAN Basic V1/V2) ----------
+   * Engaged only when the pan_verify integration row is set to live AND the
+   * provider call succeeds. In every other state the labelled sandbox path
+   * below runs — a mock result is never presented as a real verification. */
+  if (body.type === "pan" && cust.pan) {
+    const intRow = await q1<Record<string, any>>("SELECT * FROM integrations WHERE tenant_id = ? AND code = 'pan_verify'", [req.user!.tenant_id]);
+    const rowCfg = intRow ? parseRowConfig(intRow) : null;
+    // Live calls only fire after the hub Test proved connectivity (lastTestOk).
+    const liveMode = !!intRow && rowCfg?.mode === "live" && rowCfg.lastTestOk === true && CATALOG_BY_CODE.get("pan_verify")?.driver === "digitap";
+    if (liveMode) {
+      const t0 = Date.now();
+      const dob = toDigitapDob(cust.dob);
+      const useV2 = !!dob && !!cust.name;
+      const endpoint = useV2 ? "/validation/kyc/v2/pan_basic" : "/validation/kyc/v1/pan_basic";
+      try {
+        const { result, providerRef } = await panVerify({
+          pan: cust.pan,
+          name: cust.name,
+          dob,
+          v2: useV2,
+          nameMatchMethod: "fuzzy"
+        });
+        const verified = result.panStatus === "Active" && result.nameMatch !== false && result.dobMatch !== false;
+        const id = (await run(
+          `INSERT INTO kyc_records (tenant_id, customer_id, type, status, provider, reference_id, result, consent_id, verified_by, verified_at, expires_at)
+           VALUES (?, ?, 'pan', ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now', '+365 days'))`,
+          [req.user!.tenant_id, app.customer_id, verified ? "verified" : "failed", `DIGITAP-PAN-BASIC-${digitapConfig().env.toUpperCase()}`,
+           providerRef, JSON.stringify({ ...result, live: true, sandbox: false }), consentId, req.user!.id]
+        )).lastId;
+        if (verified) await advanceKyc();
+        await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "kyc.pan_digitap", entityType: "kyc", entityId: id, after: { verified, provider: "DIGITAP-PAN-BASIC", requestId: providerRef, latencyMs: Date.now() - t0 }, ip: clientIp(req) });
+        await logProviderRequest({ tenant_id: req.user!.tenant_id, customer_id: app.customer_id, application_id: app.id, user_id: req.user!.id, adapter: "pan_verify", endpoint, request_ref: providerRef, provider_request_id: providerRef, status: "success", latency_ms: Date.now() - t0 });
+        await saveVerificationResult({ tenant_id: req.user!.tenant_id, customer_id: app.customer_id, application_id: app.id, adapter: "pan_verify", provider: "DIGITAP-PAN-BASIC", status: verified ? "verified" : "invalid", result: { ...result, live: true }, provider_request_id: providerRef });
+        res.json({ ...(await q1("SELECT * FROM kyc_records WHERE id = ?", [id])), live: true, sandbox: false });
+        return;
+      } catch (e) {
+        const latencyMs = Date.now() - t0;
+        const httpStatus = e instanceof DigitapError ? e.httpStatus : 0;
+        const reason =
+          httpStatus === 400 ? "PAN format rejected by provider" :
+          httpStatus === 401 ? "Provider authentication failed" :
+          httpStatus === 0 ? "Provider unreachable or timed out — try again" :
+          "PAN could not be verified (invalid/inactive PAN)";
+        const errCode = e instanceof DigitapError && e.resultCode ? String(e.resultCode) : e instanceof DigitapError ? `HTTP${e.httpStatus}` : "NETWORK";
+        const id = (await run(
+          `INSERT INTO kyc_records (tenant_id, customer_id, type, status, provider, reference_id, result, consent_id, verified_by)
+           VALUES (?, ?, 'pan', 'failed', 'DIGITAP-PAN-BASIC', ?, ?, ?, ?)`,
+          [req.user!.tenant_id, app.customer_id, `${errCode}-${Date.now()}`, JSON.stringify({ live: true, sandbox: false, panMasked: maskPan(cust.pan), error: reason }), consentId, req.user!.id]
+        )).lastId;
+        await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: "kyc.pan_digitap_failed", entityType: "kyc", entityId: id, after: { reason, errCode, latencyMs }, ip: clientIp(req) });
+        await logProviderRequest({ tenant_id: req.user!.tenant_id, customer_id: app.customer_id, application_id: app.id, user_id: req.user!.id, adapter: "pan_verify", endpoint, status: "failed", error_code: errCode, latency_ms: latencyMs });
+        res.status(422).json({ error: reason, provider: "DIGITAP-PAN-BASIC", code: errCode, kycRecordId: id });
+        return;
+      }
+    }
   }
-  await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: `kyc.${body.type}`, entityType: "kyc", entityId: id, after: { verified, provider: body.provider ?? `MOCK-${body.type.toUpperCase()}`, sandbox: true }, ip: clientIp(req) });
-  res.json(await q1("SELECT * FROM kyc_records WHERE id = ?", [id]));
+
+  /* ---------- SANDBOX PATH (unchanged demo behaviour, clearly labelled) ---------- */
+  const rnd = prand(app.id * 31 + app.customer_id);
+  const verified = rnd() > 0.12;
+  const provider = body.provider ?? `MOCK-${body.type.toUpperCase()}`;
+  const id = (await run(
+    `INSERT INTO kyc_records (tenant_id, customer_id, type, status, provider, reference_id, result, consent_id, verified_by, verified_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now', '+365 days'))`,
+    [req.user!.tenant_id, app.customer_id, body.type, verified ? "verified" : "failed", provider,
+     "REF" + String(Math.floor(100000 + rnd() * 899999)), JSON.stringify({ match: verified ? 0.94 + rnd() * 0.05 : 0.4, name_match: verified, live: false, sandbox: true }), consentId, req.user!.id]
+  )).lastId;
+  if (verified) await advanceKyc();
+  await audit({ tenantId: req.user!.tenant_id, userId: req.user!.id, action: `kyc.${body.type}`, entityType: "kyc", entityId: id, after: { verified, provider, sandbox: true }, ip: clientIp(req) });
+  await logProviderRequest({ tenant_id: req.user!.tenant_id, customer_id: app.customer_id, application_id: app.id, user_id: req.user!.id, adapter: body.type === "pan" ? "pan_verify" : body.type, endpoint: "mock", status: "sandbox" });
+  res.json({ ...(await q1("SELECT * FROM kyc_records WHERE id = ?", [id])), live: false, sandbox: true });
 }));
 
 /* ---------- PRODUCTS ---------- */

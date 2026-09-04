@@ -165,7 +165,7 @@ gnFinanceRouter.post("/gn/finance/fees", requirePerm("gn.finance.manage"), async
 
 gnFinanceRouter.get("/gn/finance/expenses", requirePerm("gn.finance.view"), asyncH(async (req: AuthedRequest, res) => {
   const rows = await q<Record<string, any>>("SELECT * FROM gn_expenses WHERE tenant_id = ? ORDER BY id DESC", [T(req)]);
-  const totals = await q1<Record<string, any>>("SELECT COALESCE(SUM(amount), 0) AS amount, COALESCE(SUM(CASE WHEN paid THEN amount ELSE 0 END), 0) AS paid FROM gn_expenses WHERE tenant_id = ?", [T(req)])!;
+  const totals = await q1<Record<string, any>>("SELECT COALESCE(SUM(amount), 0) AS amount, COALESCE(SUM(CASE WHEN paid = 1 THEN amount ELSE 0 END), 0) AS paid FROM gn_expenses WHERE tenant_id = ?", [T(req)])!;
   res.json({ rows, totals });
 }));
 
@@ -197,7 +197,7 @@ gnFinanceRouter.get("/gn/finance/accounting", requirePerm("gn.finance.view"), as
   const income = await q1<{ gross: number; received: number }>(
     `SELECT COALESCE(SUM(gross), 0) AS gross, COALESCE(SUM(CASE WHEN status = 'received' THEN gross ELSE 0 END), 0) AS received
      FROM gn_commissions WHERE tenant_id = ?`, [t])!;
-  const expenses = await q1<{ amount: number; paid: number }>("SELECT COALESCE(SUM(amount), 0) AS amount, COALESCE(SUM(CASE WHEN paid THEN amount ELSE 0 END), 0) AS paid FROM gn_expenses WHERE tenant_id = ?", [t])!;
+  const expenses = await q1<{ amount: number; paid: number }>("SELECT COALESCE(SUM(amount), 0) AS amount, COALESCE(SUM(CASE WHEN paid = 1 THEN amount ELSE 0 END), 0) AS paid FROM gn_expenses WHERE tenant_id = ?", [t])!;
   const paidOut = await q1<{ net: number }>("SELECT COALESCE(SUM(net), 0) AS net FROM gn_payout_batches WHERE tenant_id = ? AND status = 'paid'", [t])!;
   const receivable = await q1<{ gross: number }>("SELECT COALESCE(SUM(gross), 0) AS gross FROM gn_commissions WHERE tenant_id = ? AND status = 'earned'", [t])!;
   const byCategory = await q<Record<string, any>>("SELECT category, COALESCE(SUM(amount), 0) AS amount FROM gn_expenses WHERE tenant_id = ? GROUP BY category", [t]);
